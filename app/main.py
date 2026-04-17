@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.db import engine
-from app.dependencies import get_db, get_current_user
+from app.dependencies import get_db
 from app.models import User, Sensor, Measurement, Device, Alert, AlertRule
 from app.schemas import (
     UserResponse, 
@@ -23,9 +23,13 @@ from app.auth import verify_password, create_access_token
 from app.schemas import LoginRequest, TokenResponse
 from app.auth import get_current_user, is_admin
 
+from fastapi.staticfiles import StaticFiles
+
+
 templates = Jinja2Templates(directory="app/templates")
 
 app = FastAPI(title="Meteo Monitoring API", version="1.0.0")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 def read_root():
@@ -205,3 +209,4 @@ def login_page(request: Request):
     return templates.TemplateResponse("login.html", {
         "request": request
     })
+    
