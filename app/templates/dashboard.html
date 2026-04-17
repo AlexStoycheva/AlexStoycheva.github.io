@@ -11,75 +11,7 @@
     <input id="maxValue" placeholder="Max value">
     <button onclick="createAlert()">Save</button>
     <canvas id="chart" width="800" height="400"></canvas>
-    <script>
-        async function loadData() {
-            const token = localStorage.getItem("token");
-
-            const res = await fetch('/measurements/by-sensor/1', {
-                headers: {
-                    "Authorization": "Bearer " + token
-                }
-            });
-            const data = await res.json();
-
-            const labels = data.map(x => x.ts);
-            const values = data.map(x => x.value);
-
-            new Chart(document.getElementById('chart'), {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Temperature',
-                        data: values
-                    }]
-                }
-            });
-        }
-
-        loadData();
-
-        function logout() {
-            localStorage.removeItem("token");
-            window.location.href = "/login-page";
-        }
-
-        fetch("/me", {
-            headers: {
-                "Authorization": "Bearer " + token
-            }
-        })
-        .then(res => res.json())
-        .then(data => {
-            document.body.insertAdjacentHTML("afterbegin",
-                `<p>Logged in as: ${data.email}</p>`
-            );
-        });
-
-        if (data.roles.includes("admin")) {
-            document.body.insertAdjacentHTML("beforeend",
-                `<button onclick="createAlert()">Create Alert</button>`
-            );
-        }
-
-        async function createAlert() {
-            const token = localStorage.getItem("token");
-            const maxValue = document.getElementById("maxValue").value;
-
-            await fetch("/alert-rules", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + token
-                },
-                body: JSON.stringify({
-                    sensor_id: 1,
-                    max_value: parseFloat(maxValue)
-                })
-            });
-
-            alert("Saved");
-        }
-</script>
+    <script src="/static/js/main.js"></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
 </body>
 </html>
