@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h2>Login</h2>
+
+    <form id="loginForm">
+        <input type="email" id="email" placeholder="Email" required />
+        <br><br>
+        <input type="password" id="password" placeholder="Password" required />
+        <br><br>
+        <button type="submit">Login</button>
+    </form>
+
+    <p id="error" style="color:red;"></p>
+
+    <script>
+        document.getElementById("loginForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+
+            const res = await fetch("/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ email, password })
+            });
+
+            if (!res.ok) {
+                document.getElementById("error").innerText = "Invalid login";
+                return;
+            }
+
+            const data = await res.json();
+
+            // 🔥 запазваме token
+            localStorage.setItem("token", data.access_token);
+
+            // redirect към dashboard
+            window.location.href = "/dashboard";
+        });
+    </script>
+</body>
+</html>
