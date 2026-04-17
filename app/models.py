@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, ForeignKey, TIMESTAMP, Numeric
+from sqlalchemy import Column, Integer, BigInteger, Float, String, Boolean, Text, ForeignKey, TIMESTAMP, Numeric, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -78,3 +78,46 @@ class Measurement(Base):
     value = Column(Numeric(10, 2), nullable=False)
 
     sensor = relationship("Sensor", back_populates="measurements")
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    id = Column(BigInteger, primary_key=True)
+    alert_rule_id = Column(BigInteger, ForeignKey("alert_rules.id"))
+    measurement_id = Column(BigInteger, ForeignKey("measurements.id"))
+
+    message = Column(Text)
+    severity = Column(String(20))
+    status = Column(String(20), default="active")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    alert_rule = relationship("AlertRule")
+    measurement = relationship("Measurement")
+
+
+class AlertEvent(Base):
+    __tablename__ = "alert_events"
+
+    id = Column(BigInteger, primary_key=True)
+    alert_id = Column(BigInteger, ForeignKey("alerts.id"))
+    measurement_id = Column(BigInteger, ForeignKey("measurements.id"))
+    triggered_at = Column(DateTime, default=datetime.utcnow)
+
+    alert = relationship("Alert")
+    measurement = relationship("Measurement")
+
+
+class AlertRule(Base):
+    __tablename__ = "alert_rules"
+
+    id = Column(BigInteger, primary_key=True)
+    sensor_id = Column(BigInteger, ForeignKey("sensors.id"))
+    min_value = Column(Float, nullable=True)
+    max_value = Column(Float, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sensor = relationship("Sensor")

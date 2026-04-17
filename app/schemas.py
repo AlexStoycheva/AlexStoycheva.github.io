@@ -49,3 +49,13 @@ class MeasurementStatsResponse(BaseModel):
     min_value: float | None
     max_value: float | None
     avg_value: float | None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
