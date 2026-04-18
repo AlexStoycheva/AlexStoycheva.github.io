@@ -244,12 +244,45 @@ def dashboard_page(request: Request, user: User = Depends(get_current_user)):
     return templates.TemplateResponse("dashboard.html", {
         "request": request
     })
-    
+
+
+def f_to_c(f):
+    return (float(f) - 32) * 5.0 / 9.0
+
 
 @app.post("/ingest/ecowitt")
 async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
-    """Ingest data from Ecowitt weather stations."""
-    data = await request.form()
-    print(data)
+    form = await request.form()
+    data = dict(form)
 
-    return {"status": "ok"}
+    try:
+        ts = datetime.strptime(data.get("dateutc"), "%Y-%m-%d %H:%M:%S")
+
+        temp_f = data.get("temp1f")
+        temp_c = f_to_c(temp_f) if temp_f else None
+
+        humidity = data.get("humidity1")
+
+        if temp_c is not None:
+            temp_measurement = Measurement(
+                sensor_id=1,  # TODO: сложи правилния sensor_id
+                ts=ts,
+                value=temp_c
+            )
+            db.add(temp_measurement)
+
+        if humidity is not None:
+            humidity_measurement = Measurement(
+                sensor_id=2,  # TODO: друг sensor_id
+                ts=ts,
+                value=float(humidity)
+            )
+            db.add(humidity_measurement)
+
+        db.commit()
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("Error:", e)
+        return {"status": "error", "detail": str(e)}
