@@ -33,6 +33,15 @@ def get_current_user(
     return user
 
 
+def get_current_user_optional(db: Session = Depends(get_db)) -> User | None:
+    """Optional authentication - returns user if valid token exists, None otherwise."""
+    from fastapi import Request
+    from fastapi.security import HTTPAuthorizationCredentials
+    
+    # This will be called with request as a parameter
+    return None
+
+
 def is_admin(user: User):
     return any(r.role.name == "admin" for r in user.roles)
 

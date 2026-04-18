@@ -15,9 +15,10 @@ from app.schemas import (
     MeasurementStatsResponse
 )
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
+from fastapi import Response
 
 from app.auth import verify_password, create_access_token
 from app.schemas import LoginRequest, TokenResponse
@@ -31,9 +32,39 @@ templates = Jinja2Templates(directory="app/templates")
 app = FastAPI(title="Meteo Monitoring API", version="1.0.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Meteo Monitoring API!"}
+@app.get("/", response_class=HTMLResponse)
+def read_root(request: Request):
+    """Root route - redirects to dashboard if authenticated, otherwise to login."""
+    # Check for token in cookies or Authorization header
+    token = request.cookies.get("token")
+    
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    if token:
+        try:
+            from app.auth import get_current_user
+            from fastapi.security import HTTPAuthorizationCredentials
+            
+            class FakeCredentials:
+                credentials = token
+            
+            # Try to validate the token
+            user = get_current_user(
+                credentials=FakeCredentials(),
+                db=next(get_db())
+            )
+            if user:
+                # Authenticated - redirect to dashboard
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url="/dashboard", status_code=302)
+        except:
+            pass
+    
+    # Not authenticated - redirect to login
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/login-page", status_code=302)
 
 @app.get("/health/db")
 def check_db():
@@ -167,13 +198,6 @@ def get_measurement_stats(sensor_id: int, db: Session = Depends(get_db)):
     )
 
 
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request
-    })
-
-
 @app.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
@@ -183,7 +207,17 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_access_token({"user_id": user.id})
 
-    return {"access_token": token}
+    response = RedirectResponse(url="/dashboard", status_code=302)
+    response.set_cookie(key="token", value=token, httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/login-page", response_class=HTMLResponse)
+def login_page(request: Request):
+    """Login page - serves the login form."""
+    return templates.TemplateResponse("login.html", {
+        "request": request
+    })
 
 
 @app.get("/me")
@@ -204,9 +238,10 @@ def create_rule(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
 
-@app.get("/login-page", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_page(request: Request, user: User = Depends(get_current_user)):
+    """Dashboard page - requires authentication."""
+    return templates.TemplateResponse("dashboard.html", {
         "request": request
     })
     
