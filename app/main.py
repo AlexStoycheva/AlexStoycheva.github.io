@@ -245,3 +245,11 @@ def dashboard_page(request: Request, user: User = Depends(get_current_user)):
         "request": request
     })
     
+
+@app.post("/ingest/ecowitt")
+async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
+    """Ingest data from Ecowitt weather stations."""
+    data = await request.form()
+    print(data)
+
+    return {"status": "ok"}
