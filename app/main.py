@@ -267,7 +267,8 @@ def dashboard_page(request: Request):
         return RedirectResponse(url="/login-page", status_code=302)
     
     return templates.TemplateResponse("dashboard.html", {
-        "request": request
+        "request": request,
+        "username": user.first_name
     })
 
 

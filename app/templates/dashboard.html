@@ -7,7 +7,10 @@
 <body>
     <header class="header">
         <h1>Meteo Dashboard</h1>
-        <button onclick="logout()" class="logout-btn">Logout</button>
+        <div class="user-greeting">
+            <span>Hello, {{ username }}!</span>
+            <button onclick="logout()" class="logout-btn">Logout</button>
+        </div>
     </header>
     <h3>Create Alert</h3>
     <input id="maxValue" placeholder="Max value">
