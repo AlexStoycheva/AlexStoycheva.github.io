@@ -149,11 +149,18 @@ async function loadUser() {
 
 
 // LOGOUT
-function logout() {
-    // Clear cookie
-    document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+async function logout() {
+    const token = getToken() || localStorage.getItem("token");
+    
+    await fetch("/logout", {
+        method: "POST",
+        headers: {
+            "Authorization": "Bearer " + token
+        }
+    });
+    
     localStorage.removeItem("token");
-    window.location.href = "/";
+    window.location.href = "/login-page";
 }
 
 

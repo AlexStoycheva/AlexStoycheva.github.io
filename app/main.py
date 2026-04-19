@@ -259,6 +259,14 @@ def get_me(user: User = Depends(get_current_user)):
     }
 
 
+@app.post("/logout")
+def logout():
+    """Logout - clears the auth cookie."""
+    response = RedirectResponse(url="/login-page", status_code=302)
+    response.delete_cookie(key="token")
+    return response
+
+
 @app.post("/alert-rules")
 def create_rule(
     data: dict,
