@@ -380,6 +380,44 @@ async function createDevice() {
     location.reload();
 }
 
+// Show Add Measurement Type Modal
+function showAddMeasurementTypeModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("addMeasurementTypeModal").style.display = "block";
+}
+
+// Create Measurement Type
+async function createMeasurementType() {
+    const token = getToken() || localStorage.getItem("token");
+    
+    const name = document.getElementById("newMeasTypeName").value.trim();
+    const unit = document.getElementById("newMeasTypeUnit").value.trim();
+    
+    if (!name || !unit) {
+        alert("Please enter both name and unit");
+        return;
+    }
+    
+    const res = await fetch("/measurement-types", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({ name, unit })
+    });
+    
+    if (res.ok) {
+        alert("Measurement type created!");
+        closeModals();
+        location.reload();
+    } else {
+        const err = await res.json();
+        alert("Error: " + (err.detail || "Failed to create measurement type"));
+    }
+}
+
 // Show Remove Sensor Modal
 async function showRemoveSensorModal() {
     closeModals();

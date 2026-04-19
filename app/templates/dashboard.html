@@ -13,6 +13,7 @@
                 <button type="button" class="menu-btn">⚙️ Manage</button>
                 <div class="dropdown-content">
                     <button type="button" onclick="showAddDeviceModal()">+ Add Device</button>
+                    <button type="button" onclick="showAddMeasurementTypeModal()">+ Add Measurement Type</button>
                     <button type="button" onclick="showRemoveSensorModal()">- Remove Sensor</button>
                     <button type="button" onclick="showRemoveDeviceModal()">- Remove Device</button>
                     <button type="button" onclick="showAlertsModal()">📋 View Alerts</button>
@@ -141,6 +142,25 @@
                 </div>
                 <p class="warning">Warning: This will also delete all sensors for this device!</p>
                 <button type="button" class="danger" onclick="deleteDevice()">Remove Device</button>
+            </div>
+        </div>
+
+        <!-- Add Measurement Type Modal -->
+        <div id="addMeasurementTypeModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Add Measurement Type</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="newMeasTypeName" placeholder="e.g., wind_speed">
+                </div>
+                <div class="form-group">
+                    <label>Unit</label>
+                    <input type="text" id="newMeasTypeUnit" placeholder="e.g., m/s, km/h, mm">
+                </div>
+                <button type="button" onclick="createMeasurementType()">Create</button>
             </div>
         </div>
 

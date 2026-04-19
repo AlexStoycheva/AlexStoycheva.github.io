@@ -191,6 +191,36 @@ def get_sensor(sensor_id: int, user: User = Depends(get_current_user), db: Sessi
     return sensor
 
 
+@app.get("/measurement-types", response_model=list[dict])
+def get_measurement_types(db: Session = Depends(get_db)):
+    """Get all measurement types."""
+    types = db.query(MeasurementType).all()
+    return [{"id": t.id, "name": t.name, "unit": t.unit} for t in types]
+
+
+@app.post("/measurement-types")
+def create_measurement_type(
+    name: str,
+    unit: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can create measurement types")
+    
+    # Check if already exists
+    existing = db.query(MeasurementType).filter(MeasurementType.name == name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Measurement type already exists")
+    
+    mt = MeasurementType(name=name, unit=unit)
+    db.add(mt)
+    db.commit()
+    db.refresh(mt)
+    return {"id": mt.id, "name": mt.name, "unit": mt.unit, "message": "Measurement type created"}
+
+
 @app.post("/devices")
 def create_device(
     name: str,
@@ -551,7 +581,6 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
     """
     form = await request.form()
     data = dict(form)
-    print("Received data:", data)
 
     # Get device_id from query params
     device_id = request.query_params.get("device_id")
