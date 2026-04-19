@@ -38,6 +38,7 @@ class Device(Base):
     __tablename__ = "devices"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     name = Column(String(100), nullable=False)
     serial_number = Column(String(100), unique=True)
     location_name = Column(String(100))
@@ -45,6 +46,7 @@ class Device(Base):
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     sensors = relationship("Sensor", back_populates="device")
+    user = relationship("User")
 
 class MeasurementType(Base):
     __tablename__ = "measurement_types"

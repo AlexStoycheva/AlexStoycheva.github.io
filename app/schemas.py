@@ -28,6 +28,7 @@ class MeasurementResponse(BaseModel):
 
 class DeviceResponse(BaseModel):
     id: int
+    user_id: int | None = None
     name: str
     serial_number: str | None = None
     location_name: str | None = None

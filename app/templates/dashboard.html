@@ -16,7 +16,6 @@
         const devices = {{ devices | tojson }};
         const measurementTypes = {{ measurement_types | tojson }};
     </script>
-    {% if is_admin %}
     <div class="alert-form">
         <h3>Create Alert</h3>
         <div class="alert-controls">
@@ -52,7 +51,6 @@
             <button type="button" onclick="createAlert()">Save</button>
         </div>
     </div>
-    {% endif %}
     <div class="chart-controls">
         <div class="form-group">
             <label>Chart Sensor</label>

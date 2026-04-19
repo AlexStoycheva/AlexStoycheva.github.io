@@ -146,8 +146,16 @@ def get_measurements(db: Session = Depends(get_db)):
     return measurements
 
 @app.get("/devices", response_model=list[DeviceResponse])
-def get_devices(db: Session = Depends(get_db)):
-    devices = db.query(Device).all()
+def get_devices(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    # Admin sees all devices, regular users see only their own
+    if is_admin(user):
+        devices = db.query(Device).all()
+    else:
+        devices = db.query(Device).filter(Device.user_id == user.id).all()
     return devices
 
 @app.get("/sensors", response_model=list[SensorResponse])
@@ -157,7 +165,17 @@ def get_sensors(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Sensor)
+    from app.auth import is_admin
+    
+    # Get devices user has access to
+    if is_admin(user):
+        devices = db.query(Device).all()
+    else:
+        devices = db.query(Device).filter(Device.user_id == user.id).all()
+    
+    allowed_device_ids = [d.id for d in devices]
+    
+    query = db.query(Sensor).filter(Sensor.device_id.in_(allowed_device_ids))
     if device_id:
         query = query.filter(Sensor.device_id == device_id)
     if measurement_type_id:
@@ -171,6 +189,116 @@ def get_sensor(sensor_id: int, user: User = Depends(get_current_user), db: Sessi
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
     return sensor
+
+
+@app.post("/devices")
+def create_device(
+    name: str,
+    serial_number: str = None,
+    location_name: str = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    # Admin can create for any user, regular users can only create for themselves
+    if not is_admin(user):
+        # Regular users can only create devices for themselves
+        pass  # will use user.id as owner
+    
+    device = Device(
+        name=name,
+        serial_number=serial_number,
+        location_name=location_name,
+        user_id=user.id,
+        status="active"
+    )
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return {"id": device.id, "name": device.name, "message": "Device created"}
+
+
+@app.delete("/devices/{device_id}")
+def delete_device(
+    device_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # Check permission: admin can delete any, regular users can only delete their own
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this device")
+    
+    # Delete associated sensors first
+    db.query(Sensor).filter(Sensor.device_id == device_id).delete()
+    db.delete(device)
+    db.commit()
+    return {"message": "Device deleted"}
+
+
+@app.post("/sensors")
+def create_sensor(
+    device_id: int,
+    measurement_type_id: int,
+    name: str,
+    location: str = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # Check permission
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to add sensor to this device")
+    
+    # Check measurement type exists
+    mt = db.query(MeasurementType).filter(MeasurementType.id == measurement_type_id).first()
+    if not mt:
+        raise HTTPException(status_code=404, detail="Measurement type not found")
+    
+    sensor = Sensor(
+        device_id=device_id,
+        measurement_type_id=measurement_type_id,
+        name=name,
+        location=location
+    )
+    db.add(sensor)
+    db.commit()
+    db.refresh(sensor)
+    return {"id": sensor.id, "name": sensor.name, "message": "Sensor created"}
+
+
+@app.delete("/sensors/{sensor_id}")
+def delete_sensor(
+    sensor_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    
+    sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    
+    device = db.query(Device).filter(Device.id == sensor.device_id).first()
+    
+    # Check permission
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this sensor")
+    
+    db.delete(sensor)
+    db.commit()
+    return {"message": "Sensor deleted"}
+
 
 @app.get("/measurement-types/{type_id}")
 def get_measurement_type(type_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -273,8 +401,7 @@ def create_rule(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not is_admin(user):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    from app.auth import is_admin
     
     sensor_id = data.get("sensor_id")
     max_value = data.get("max_value")
@@ -287,6 +414,11 @@ def create_rule(
     sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
+    
+    # Check permission: admin can alert any sensor, regular users only their own
+    device = db.query(Device).filter(Device.id == sensor.device_id).first()
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to create alert for this sensor")
     
     # Create the alert rule
     rule = AlertRule(
@@ -331,13 +463,19 @@ def dashboard_page(request: Request):
     except:
         return RedirectResponse(url="/login-page", status_code=302)
     
-    # Get active devices
-    devices = db.query(Device).filter(Device.status == "active").all()
+    from app.auth import is_admin
+    
+    # Get devices based on user role
+    if is_admin(user):
+        devices = db.query(Device).filter(Device.status == "active").all()
+    else:
+        devices = db.query(Device).filter(
+            Device.status == "active",
+            Device.user_id == user.id
+        ).all()
     
     # Get all measurement types
     measurement_types = db.query(MeasurementType).all()
-    
-    from app.auth import is_admin
     
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
