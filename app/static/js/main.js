@@ -45,72 +45,168 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
 });
 
 
-// DASHBOARD
-let chartInstance = null;
+// DASHBOARD - Multiple charts
+let chartInstances = {};
 
-async function loadChart() {
+async function loadAllCharts() {
     const token = getToken() || localStorage.getItem("token");
+    const hours = document.getElementById("timeRange").value;
+    const container = document.getElementById("chartsContainer");
     
-    const sensorId = document.getElementById("chartSensorSelect").value;
+    // Destroy existing charts
+    Object.values(chartInstances).forEach(chart => chart.destroy());
+    chartInstances = {};
+    
+    // Get all sensors for user
+    const sensorsRes = await fetch("/sensors", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const sensors = await sensorsRes.json();
+    
+    if (sensors.length === 0) {
+        container.innerHTML = "<p>No sensors available.</p>";
+        return;
+    }
+    
+    container.innerHTML = "";
+    
+    // Get measurement types for units
+    const mtRes = await fetch("/measurement-types");
+    const measurementTypes = await mtRes.json();
+    const mtMap = {};
+    measurementTypes.forEach(mt => mtMap[mt.id] = mt);
+    
+    // Create a chart for each sensor
+    for (const sensor of sensors) {
+        // Create card
+        const card = document.createElement("div");
+        card.className = "chart-card";
+        card.onclick = () => expandChart(sensor.id);
+        card.innerHTML = `
+            <h4>${sensor.name}</h4>
+            <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
+            <canvas id="chart-${sensor.id}"></canvas>
+        `;
+        container.appendChild(card);
+        
+        // Fetch measurements
+        const res = await fetch(`/measurements/by-sensor/${sensor.id}?hours=${hours}`, {
+            headers: { "Authorization": "Bearer " + token }
+        });
+        const data = await res.json();
+        
+        // Update current value
+        const valueEl = document.getElementById(`value-${sensor.id}`);
+        if (data.length > 0) {
+            const latest = data[data.length - 1];
+            const mt = mtMap[sensor.measurement_type_id];
+            valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${mt ? mt.unit : ''}</span>`;
+        } else {
+            valueEl.innerHTML = "No data<span class='unit'></span>";
+        }
+        
+        // Create chart
+        const labels = data.map(x => x.ts);
+        const values = data.map(x => x.value);
+        
+        const ctx = document.getElementById(`chart-${sensor.id}`).getContext('2d');
+        chartInstances[sensor.id] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: sensor.name,
+                    data: values,
+                    borderColor: '#4CAF50',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { 
+                        ticks: { maxTicksLimit: 8 }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Expand chart to fullscreen modal
+async function expandChart(sensorId) {
+    const token = getToken() || localStorage.getItem("token");
     const hours = document.getElementById("timeRange").value;
     
-    if (!sensorId) {
-        return;
-    }
-
-    const res = await fetch(`/measurements/by-sensor/${sensorId}?hours=${hours}`, {
-        headers: {
-            "Authorization": "Bearer " + token
-        }
-    });
-
-    const data = await res.json();
-    
-    if (data.length === 0) {
-        document.getElementById("currentValue").textContent = "No data";
-        document.getElementById("currentUnit").textContent = "";
-        if (chartInstance) {
-            chartInstance.destroy();
-            chartInstance = null;
-        }
-        return;
-    }
-
-    // Get the latest reading
-    const latest = data[data.length - 1];
-    document.getElementById("currentValue").textContent = parseFloat(latest.value).toFixed(1);
-    
-    // Get unit from measurement type
+    // Get sensor info
     const sensorRes = await fetch(`/sensors/${sensorId}`, {
         headers: { "Authorization": "Bearer " + token }
     });
-    if (sensorRes.ok) {
-        const sensor = await sensorRes.json();
-        // Need to get measurement type info
-        const mtRes = await fetch(`/measurement-types/${sensor.measurement_type_id}`, {
-            headers: { "Authorization": "Bearer " + token }
-        });
-        if (mtRes.ok) {
-            const mt = await mtRes.json();
-            document.getElementById("currentUnit").textContent = mt.unit;
-        }
+    const sensor = await sensorRes.json();
+    
+    // Get measurement type
+    const mtRes = await fetch(`/measurement-types/${sensor.measurement_type_id}`, {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const mt = await mtRes.json();
+    
+    // Get measurements
+    const dataRes = await fetch(`/measurements/by-sensor/${sensorId}?hours=${hours}`, {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const data = await dataRes.json();
+    
+    // Show modal
+    const overlay = document.getElementById("modalOverlay");
+    let modal = document.getElementById("expandChartModal");
+    
+    if (!modal) {
+        overlay.innerHTML += `
+            <div id="expandChartModal" class="modal" style="width: 90%; max-width: 1000px;">
+                <div class="modal-header">
+                    <h3 id="expandChartTitle">Chart</h3>
+                    <button type="button" class="close-modal" onclick="closeExpandModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="current-value" id="expandCurrentValue" style="text-align: center; margin-bottom: 20px;"></div>
+                    <canvas id="expandChart"></canvas>
+                </div>
+            </div>
+        `;
+        modal = document.getElementById("expandChartModal");
     }
-
+    
+    document.getElementById("expandChartTitle").textContent = sensor.name;
+    
+    // Current value
+    const valueEl = document.getElementById("expandCurrentValue");
+    if (data.length > 0) {
+        const latest = data[data.length - 1];
+        valueEl.innerHTML = `Current: <strong>${parseFloat(latest.value).toFixed(1)} ${mt.unit}</strong>`;
+    } else {
+        valueEl.innerHTML = "No data";
+    }
+    
+    overlay.style.display = "flex";
+    modal.style.display = "block";
+    
+    // Create expanded chart
     const labels = data.map(x => x.ts);
     const values = data.map(x => x.value);
-
-    const ctx = document.getElementById('chart').getContext('2d');
     
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
-
-    chartInstance = new Chart(ctx, {
+    const ctx = document.getElementById("expandChart").getContext('2d');
+    new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Value',
+                label: sensor.name,
                 data: values,
                 borderColor: '#4CAF50',
                 backgroundColor: 'rgba(76, 175, 80, 0.1)',
@@ -126,11 +222,16 @@ async function loadChart() {
             },
             scales: {
                 x: { 
-                    ticks: { maxTicksLimit: 10 }
+                    ticks: { maxTicksLimit: 15 }
                 }
             }
         }
     });
+}
+
+function closeExpandModal() {
+    document.getElementById("modalOverlay").style.display = "none";
+    document.getElementById("expandChartModal").style.display = "none";
 }
 
 
@@ -210,7 +311,7 @@ async function createAlert() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-    if (document.getElementById("chart")) {
+    if (document.getElementById("chartsContainer")) {
         loadUser();
         
         // Populate devices dropdown
@@ -235,23 +336,8 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
         
-        // Populate chart sensor dropdown with all sensors
-        const chartSensorSelect = document.getElementById("chartSensorSelect");
-        if (chartSensorSelect && typeof devices !== 'undefined') {
-            // Fetch all sensors
-            fetch("/sensors", {
-                headers: { "Authorization": "Bearer " + (getToken() || localStorage.getItem("token")) }
-            })
-            .then(res => res.json())
-            .then(sensors => {
-                sensors.forEach(sensor => {
-                    const option = document.createElement("option");
-                    option.value = sensor.id;
-                    option.textContent = sensor.name;
-                    chartSensorSelect.appendChild(option);
-                });
-            });
-        }
+        // Load all charts for all sensors
+        loadAllCharts();
     }
 });
 
