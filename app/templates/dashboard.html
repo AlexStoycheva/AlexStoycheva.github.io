@@ -12,9 +12,45 @@
             <button onclick="logout()" class="logout-btn">Logout</button>
         </div>
     </header>
-    <h3>Create Alert</h3>
-    <input id="maxValue" placeholder="Max value">
-    <button onclick="createAlert()">Save</button>
+    <script>
+        const devices = {{ devices | tojson }};
+        const measurementTypes = {{ measurement_types | tojson }};
+    </script>
+    <div class="alert-form">
+        <h3>Create Alert</h3>
+        <div class="alert-controls">
+            <div class="form-group">
+                <label>Device</label>
+                <select id="deviceSelect" onchange="loadSensors()">
+                    <option value="">Select</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Type</label>
+                <select id="measurementTypeSelect" onchange="updateSensorOptions()">
+                    <option value="">Select</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Sensor</label>
+                <select id="sensorSelect">
+                    <option value="">Select</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Alert</label>
+                <select id="alertType">
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Value</label>
+                <input id="alertValue" type="number" step="0.1" placeholder="0.0">
+            </div>
+            <button onclick="createAlert()">Save</button>
+        </div>
+    </div>
     <canvas id="chart" width="800" height="400"></canvas>
     <script src="/static/js/main.js"></script>
     <link rel="stylesheet" href="/static/css/styles.css">

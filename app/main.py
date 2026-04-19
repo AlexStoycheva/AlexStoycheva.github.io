@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app.db import engine
 from app.dependencies import get_db
-from app.models import User, Sensor, Measurement, Device, Alert, AlertRule
+from app.models import User, Sensor, Measurement, Device, Alert, AlertRule, MeasurementType
 from app.schemas import (
     UserResponse, 
     MeasurementCreate, 
@@ -151,8 +151,17 @@ def get_devices(db: Session = Depends(get_db)):
     return devices
 
 @app.get("/sensors", response_model=list[SensorResponse])
-def get_sensors(db: Session = Depends(get_db)):
-    sensors = db.query(Sensor).all()
+def get_sensors(
+    device_id: int = None,
+    measurement_type_id: int = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Sensor)
+    if device_id:
+        query = query.filter(Sensor.device_id == device_id)
+    if measurement_type_id:
+        query = query.filter(Sensor.measurement_type_id == measurement_type_id)
+    sensors = query.all()
     return sensors
 
 @app.get("/measurements/by-sensor/{sensor_id}", response_model=list[MeasurementResponse])
@@ -237,6 +246,31 @@ def create_rule(
 ):
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    sensor_id = data.get("sensor_id")
+    max_value = data.get("max_value")
+    min_value = data.get("min_value")
+    
+    if not sensor_id:
+        raise HTTPException(status_code=400, detail="sensor_id is required")
+    
+    # Check if sensor exists
+    sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    
+    # Create the alert rule
+    rule = AlertRule(
+        sensor_id=sensor_id,
+        max_value=max_value,
+        min_value=min_value,
+        is_active=True
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    
+    return {"id": rule.id, "message": "Alert rule created successfully"}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -253,6 +287,8 @@ def dashboard_page(request: Request):
     if not token:
         return RedirectResponse(url="/login-page", status_code=302)
     
+    db = next(get_db())
+    
     try:
         from app.auth import get_current_user
         
@@ -261,14 +297,22 @@ def dashboard_page(request: Request):
         
         user = get_current_user(
             credentials=FakeCredentials(),
-            db=next(get_db())
+            db=db
         )
     except:
         return RedirectResponse(url="/login-page", status_code=302)
     
+    # Get active devices
+    devices = db.query(Device).filter(Device.status == "active").all()
+    
+    # Get all measurement types
+    measurement_types = db.query(MeasurementType).all()
+    
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "username": user.first_name
+        "username": user.first_name,
+        "devices": [{"id": d.id, "name": d.name, "location": d.location_name} for d in devices],
+        "measurement_types": [{"id": m.id, "name": m.name, "unit": m.unit} for m in measurement_types]
     })
 
 

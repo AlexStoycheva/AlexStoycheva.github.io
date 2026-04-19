@@ -97,7 +97,25 @@ function logout() {
 // ALERT CREATE
 async function createAlert() {
     const token = getToken() || localStorage.getItem("token");
-    const maxValue = document.getElementById("maxValue").value;
+    
+    const sensorId = document.getElementById("sensorSelect").value;
+    const alertType = document.getElementById("alertType").value;
+    const alertValue = document.getElementById("alertValue").value;
+
+    if (!sensorId || !alertValue) {
+        alert("Please fill all fields");
+        return;
+    }
+
+    const payload = {
+        sensor_id: parseInt(sensorId),
+    };
+
+    if (alertType === "max") {
+        payload.max_value = parseFloat(alertValue);
+    } else {
+        payload.min_value = parseFloat(alertValue);
+    }
 
     await fetch("/alert-rules", {
         method: "POST",
@@ -105,18 +123,70 @@ async function createAlert() {
             "Content-Type": "application/json",
             "Authorization": "Bearer " + token
         },
-        body: JSON.stringify({
-            sensor_id: 1,
-            max_value: parseFloat(maxValue)
-        })
+        body: JSON.stringify(payload)
     });
 
-    alert("Saved");
+    alert("Alert saved!");
 }
 
 window.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("chart")) {
         loadChart();
         loadUser();
+        
+        // Populate devices dropdown
+        const deviceSelect = document.getElementById("deviceSelect");
+        if (deviceSelect && typeof devices !== 'undefined') {
+            devices.forEach(device => {
+                const option = document.createElement("option");
+                option.value = device.id;
+                option.textContent = `${device.name} (${device.location})`;
+                deviceSelect.appendChild(option);
+            });
+        }
+        
+        // Populate measurement types dropdown
+        const measurementTypeSelect = document.getElementById("measurementTypeSelect");
+        if (measurementTypeSelect && typeof measurementTypes !== 'undefined') {
+            measurementTypes.forEach(mt => {
+                const option = document.createElement("option");
+                option.value = mt.id;
+                option.textContent = `${mt.name} (${mt.unit})`;
+                measurementTypeSelect.appendChild(option);
+            });
+        }
     }
 });
+
+// Load sensors when device is selected
+async function loadSensors() {
+    const deviceId = document.getElementById("deviceSelect").value;
+    const measurementTypeId = document.getElementById("measurementTypeSelect").value;
+    const sensorSelect = document.getElementById("sensorSelect");
+    
+    // Clear existing options
+    sensorSelect.innerHTML = '<option value="">Select Sensor</option>';
+    
+    if (!deviceId || !measurementTypeId) return;
+    
+    const token = getToken() || localStorage.getItem("token");
+    
+    const res = await fetch(`/sensors?device_id=${deviceId}&measurement_type_id=${measurementTypeId}`, {
+        headers: {
+            "Authorization": "Bearer " + token
+        }
+    });
+    
+    const sensors = await res.json();
+    
+    sensors.forEach(sensor => {
+        const option = document.createElement("option");
+        option.value = sensor.id;
+        option.textContent = sensor.name;
+        sensorSelect.appendChild(option);
+    });
+}
+
+function updateSensorOptions() {
+    loadSensors();
+}
