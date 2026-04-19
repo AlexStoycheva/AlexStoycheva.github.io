@@ -51,7 +51,29 @@
             <button onclick="createAlert()">Save</button>
         </div>
     </div>
-    <canvas id="chart" width="800" height="400"></canvas>
+    <div class="chart-controls">
+        <div class="form-group">
+            <label>Chart Sensor</label>
+            <select id="chartSensorSelect" onchange="loadChart()">
+                <option value="">Select Sensor</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Time Range</label>
+            <select id="timeRange" onchange="loadChart()">
+                <option value="1">Last Hour</option>
+                <option value="24" selected>Last 24 Hours</option>
+                <option value="168">Last 7 Days</option>
+                <option value="720">Last 30 Days</option>
+            </select>
+        </div>
+    </div>
+    <div class="current-reading">
+        <span class="reading-label">Current:</span>
+        <span id="currentValue">--</span>
+        <span id="currentUnit"></span>
+    </div>
+    <canvas id="chart"></canvas>
     <script src="/static/js/main.js"></script>
     <link rel="stylesheet" href="/static/css/styles.css">
 </body>

@@ -154,6 +154,7 @@ def get_devices(db: Session = Depends(get_db)):
 def get_sensors(
     device_id: int = None,
     measurement_type_id: int = None,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(Sensor)
@@ -164,9 +165,24 @@ def get_sensors(
     sensors = query.all()
     return sensors
 
+@app.get("/sensors/{sensor_id}", response_model=SensorResponse)
+def get_sensor(sensor_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    return sensor
+
+@app.get("/measurement-types/{type_id}")
+def get_measurement_type(type_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    mt = db.query(MeasurementType).filter(MeasurementType.id == type_id).first()
+    if not mt:
+        raise HTTPException(status_code=404, detail="Measurement type not found")
+    return {"id": mt.id, "name": mt.name, "unit": mt.unit}
+
 @app.get("/measurements/by-sensor/{sensor_id}", response_model=list[MeasurementResponse])
 def get_measurements_by_sensor(
         sensor_id: int, 
+        hours: int = 24,
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
         ):
@@ -174,11 +190,16 @@ def get_measurements_by_sensor(
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    # Limit to max 500 points for chart performance
     measurements = (
         db.query(Measurement)
         .filter(Measurement.sensor_id == sensor_id)
-        .order_by(Measurement.ts.desc())
-        .limit(100)
+        .filter(Measurement.ts >= cutoff)
+        .order_by(Measurement.ts.asc())
+        .limit(500)
         .all()
     )
     return measurements

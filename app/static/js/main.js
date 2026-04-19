@@ -41,28 +41,89 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
 
 
 // DASHBOARD
+let chartInstance = null;
+
 async function loadChart() {
     const token = getToken() || localStorage.getItem("token");
+    
+    const sensorId = document.getElementById("chartSensorSelect").value;
+    const hours = document.getElementById("timeRange").value;
+    
+    if (!sensorId) {
+        return;
+    }
 
-    const res = await fetch('/measurements/by-sensor/1', {
+    const res = await fetch(`/measurements/by-sensor/${sensorId}?hours=${hours}`, {
         headers: {
             "Authorization": "Bearer " + token
         }
     });
 
     const data = await res.json();
+    
+    if (data.length === 0) {
+        document.getElementById("currentValue").textContent = "No data";
+        document.getElementById("currentUnit").textContent = "";
+        if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+        return;
+    }
+
+    // Get the latest reading
+    const latest = data[data.length - 1];
+    document.getElementById("currentValue").textContent = parseFloat(latest.value).toFixed(1);
+    
+    // Get unit from measurement type
+    const sensorRes = await fetch(`/sensors/${sensorId}`, {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    if (sensorRes.ok) {
+        const sensor = await sensorRes.json();
+        // Need to get measurement type info
+        const mtRes = await fetch(`/measurement-types/${sensor.measurement_type_id}`, {
+            headers: { "Authorization": "Bearer " + token }
+        });
+        if (mtRes.ok) {
+            const mt = await mtRes.json();
+            document.getElementById("currentUnit").textContent = mt.unit;
+        }
+    }
 
     const labels = data.map(x => x.ts);
     const values = data.map(x => x.value);
 
-    new Chart(document.getElementById('chart'), {
+    const ctx = document.getElementById('chart').getContext('2d');
+    
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Temperature',
-                data: values
+                label: 'Value',
+                data: values,
+                borderColor: '#4CAF50',
+                backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                fill: true,
+                tension: 0.3
             }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { 
+                    ticks: { maxTicksLimit: 10 }
+                }
+            }
         }
     });
 }
@@ -80,8 +141,10 @@ async function loadUser() {
 
     const data = await res.json();
 
-    document.getElementById("user-info").innerText =
-        `Logged in as: ${data.email}`;
+    const userInfoEl = document.getElementById("user-info");
+    if (userInfoEl) {
+        userInfoEl.innerText = `Logged in as: ${data.email}`;
+    }
 }
 
 
@@ -131,7 +194,6 @@ async function createAlert() {
 
 window.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("chart")) {
-        loadChart();
         loadUser();
         
         // Populate devices dropdown
@@ -153,6 +215,24 @@ window.addEventListener("DOMContentLoaded", () => {
                 option.value = mt.id;
                 option.textContent = `${mt.name} (${mt.unit})`;
                 measurementTypeSelect.appendChild(option);
+            });
+        }
+        
+        // Populate chart sensor dropdown with all sensors
+        const chartSensorSelect = document.getElementById("chartSensorSelect");
+        if (chartSensorSelect && typeof devices !== 'undefined') {
+            // Fetch all sensors
+            fetch("/sensors", {
+                headers: { "Authorization": "Bearer " + (getToken() || localStorage.getItem("token")) }
+            })
+            .then(res => res.json())
+            .then(sensors => {
+                sensors.forEach(sensor => {
+                    const option = document.createElement("option");
+                    option.value = sensor.id;
+                    option.textContent = sensor.name;
+                    chartSensorSelect.appendChild(option);
+                });
             });
         }
     }
