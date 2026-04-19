@@ -9,6 +9,15 @@
         <h1>Meteo Dashboard</h1>
         <div class="user-greeting">
             <span>Hello, {{ username }}!</span>
+            <div class="dropdown">
+                <button type="button" class="menu-btn">⚙️ Manage</button>
+                <div class="dropdown-content">
+                    <button type="button" onclick="showAddDeviceModal()">+ Add Device</button>
+                    <button type="button" onclick="showRemoveSensorModal()">- Remove Sensor</button>
+                    <button type="button" onclick="showRemoveDeviceModal()">- Remove Device</button>
+                    <button type="button" onclick="showAlertsModal()">📋 View Alerts</button>
+                </div>
+            </div>
             <button type="button" onclick="logout()" class="logout-btn">Logout</button>
         </div>
     </header>
@@ -74,6 +83,79 @@
         <span id="currentUnit"></span>
     </div>
     <canvas id="chart"></canvas>
+    
+    <!-- Modals -->
+    <div id="modalOverlay" class="modal-overlay" style="display:none;">
+        <!-- Add Device Modal -->
+        <div id="addDeviceModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Add Device</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Device Name</label>
+                    <input type="text" id="newDeviceName" placeholder="My Weather Station">
+                </div>
+                <div class="form-group">
+                    <label>Serial Number</label>
+                    <input type="text" id="newDeviceSerial" placeholder="WS-001">
+                </div>
+                <div class="form-group">
+                    <label>Location</label>
+                    <input type="text" id="newDeviceLocation" placeholder="Balcony">
+                </div>
+                <div class="form-group">
+                    <label>Sensors (select measurement types)</label>
+                    <div id="sensorCheckboxes"></div>
+                </div>
+                <button type="button" onclick="createDevice()">Create Device</button>
+            </div>
+        </div>
+
+        <!-- Remove Sensor Modal -->
+        <div id="removeSensorModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Remove Sensor</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Sensor to Remove</label>
+                    <select id="sensorToRemove"></select>
+                </div>
+                <button type="button" class="danger" onclick="deleteSensor()">Remove Sensor</button>
+            </div>
+        </div>
+
+        <!-- Remove Device Modal -->
+        <div id="removeDeviceModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Remove Device</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Device to Remove</label>
+                    <select id="deviceToRemove"></select>
+                </div>
+                <p class="warning">Warning: This will also delete all sensors for this device!</p>
+                <button type="button" class="danger" onclick="deleteDevice()">Remove Device</button>
+            </div>
+        </div>
+
+        <!-- View Alerts Modal -->
+        <div id="alertsModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Alerts</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="alertsList"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/main.js"></script>
     <link rel="stylesheet" href="/static/css/styles.css">
 </body>

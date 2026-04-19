@@ -35,6 +35,11 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
         return;
     }
 
+    // Get token for FastAPI docs
+    const data = await res.json();
+    console.log("Your API token (for FastAPI docs):", data.access_token);
+    console.log("Use: Bearer " + data.access_token);
+
     // Token is now set as cookie by the server, just redirect
     window.location.href = "/dashboard";
 });
@@ -281,4 +286,247 @@ async function loadSensors() {
 
 function updateSensorOptions() {
     loadSensors();
+}
+
+// ========== MANAGEMENT MODALS ==========
+
+function closeModals() {
+    document.getElementById("modalOverlay").style.display = "none";
+    document.querySelectorAll(".modal").forEach(m => m.style.display = "none");
+}
+
+// Show Add Device Modal
+async function showAddDeviceModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("addDeviceModal").style.display = "block";
+    
+    // Populate measurement type checkboxes
+    const container = document.getElementById("sensorCheckboxes");
+    container.innerHTML = "";
+    
+    if (typeof measurementTypes !== 'undefined') {
+        measurementTypes.forEach(mt => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="checkbox" value="${mt.id}"> ${mt.name} (${mt.unit})`;
+            container.appendChild(label);
+        });
+    }
+}
+
+// Create Device with Sensors
+async function createDevice() {
+    const token = getToken() || localStorage.getItem("token");
+    
+    const name = document.getElementById("newDeviceName").value;
+    const serial = document.getElementById("newDeviceSerial").value;
+    const location = document.getElementById("newDeviceLocation").value;
+    
+    // Get selected measurement types
+    const checkboxes = document.querySelectorAll("#sensorCheckboxes input:checked");
+    const selectedTypes = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (!name) {
+        alert("Please enter a device name");
+        return;
+    }
+    if (selectedTypes.length === 0) {
+        alert("Please select at least one sensor type");
+        return;
+    }
+    
+    // Create device first
+    const deviceRes = await fetch("/devices", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+            name: name,
+            serial_number: serial,
+            location_name: location
+        })
+    });
+    
+    if (!deviceRes.ok) {
+        const err = await deviceRes.json();
+        alert("Error creating device: " + (err.detail || "Unknown error"));
+        return;
+    }
+    
+    const device = await deviceRes.json();
+    
+    // Create sensors for each selected measurement type
+    for (const measTypeId of selectedTypes) {
+        const measType = measurementTypes.find(mt => mt.id === measTypeId);
+        await fetch("/sensors", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({
+                device_id: device.id,
+                measurement_type_id: measTypeId,
+                name: `${name} - ${measType.name}`,
+                location: location || "unknown"
+            })
+        });
+    }
+    
+    alert("Device and sensors created successfully!");
+    closeModals();
+    location.reload();
+}
+
+// Show Remove Sensor Modal
+async function showRemoveSensorModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("removeSensorModal").style.display = "block";
+    
+    const token = getToken() || localStorage.getItem("token");
+    const select = document.getElementById("sensorToRemove");
+    select.innerHTML = "<option value=''>Loading...</option>";
+    
+    const res = await fetch("/sensors", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const sensors = await res.json();
+    
+    select.innerHTML = "";
+    sensors.forEach(sensor => {
+        const option = document.createElement("option");
+        option.value = sensor.id;
+        option.textContent = sensor.name;
+        select.appendChild(option);
+    });
+}
+
+// Delete Sensor
+async function deleteSensor() {
+    const token = getToken() || localStorage.getItem("token");
+    const sensorId = document.getElementById("sensorToRemove").value;
+    
+    if (!sensorId) {
+        alert("Please select a sensor");
+        return;
+    }
+    
+    const res = await fetch(`/sensors/${sensorId}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+    });
+    
+    if (res.ok) {
+        alert("Sensor deleted!");
+        closeModals();
+        location.reload();
+    } else {
+        const err = await res.json();
+        alert("Error: " + (err.detail || "Failed to delete sensor"));
+    }
+}
+
+// Show Remove Device Modal
+async function showRemoveDeviceModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("removeDeviceModal").style.display = "block";
+    
+    const token = getToken() || localStorage.getItem("token");
+    const select = document.getElementById("deviceToRemove");
+    select.innerHTML = "<option value=''>Loading...</option>";
+    
+    const res = await fetch("/devices", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const devices = await res.json();
+    
+    select.innerHTML = "";
+    devices.forEach(device => {
+        const option = document.createElement("option");
+        option.value = device.id;
+        option.textContent = `${device.name} (${device.location || 'no location'})`;
+        select.appendChild(option);
+    });
+}
+
+// Delete Device
+async function deleteDevice() {
+    const token = getToken() || localStorage.getItem("token");
+    const deviceId = document.getElementById("deviceToRemove").value;
+    
+    if (!deviceId) {
+        alert("Please select a device");
+        return;
+    }
+    
+    if (!confirm("Are you sure? This will delete all sensors for this device!")) {
+        return;
+    }
+    
+    const res = await fetch(`/devices/${deviceId}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+    });
+    
+    if (res.ok) {
+        alert("Device deleted!");
+        closeModals();
+        location.reload();
+    } else {
+        const err = await res.json();
+        alert("Error: " + (err.detail || "Failed to delete device"));
+    }
+}
+
+// Show Alerts Modal
+async function showAlertsModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("alertsModal").style.display = "block";
+    
+    const token = getToken() || localStorage.getItem("token");
+    const container = document.getElementById("alertsList");
+    container.innerHTML = "Loading...";
+    
+    // Get user's sensors first
+    const sensorsRes = await fetch("/sensors", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const sensors = await sensorsRes.json();
+    const sensorIds = sensors.map(s => s.id);
+    
+    // Get all alert rules
+    const rulesRes = await fetch("/alert-rules", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const rules = await rulesRes.json();
+    
+    // Filter to user's sensors (or all if admin)
+    const userRules = rules.filter(r => sensorIds.includes(r.sensor_id));
+    
+    if (userRules.length === 0) {
+        container.innerHTML = "<p>No alerts found.</p>";
+        return;
+    }
+    
+    // Get sensor names for display
+    const sensorMap = {};
+    sensors.forEach(s => sensorMap[s.id] = s.name);
+    
+    container.innerHTML = userRules.map(rule => `
+        <div class="alert-item">
+            <div class="alert-sensor">Sensor: ${sensorMap[rule.sensor_id] || 'Unknown'}</div>
+            <div class="alert-rule">
+                ${rule.min_value ? `Min: ${rule.min_value}` : ''}
+                ${rule.max_value ? `Max: ${rule.max_value}` : ''}
+            </div>
+            <div class="alert-status ${rule.is_active ? 'active' : 'resolved'}">
+                ${rule.is_active ? 'Active' : 'Inactive'}
+            </div>
+        </div>
+    `).join("");
 }

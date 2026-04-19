@@ -1,4 +1,5 @@
 from fastapi import Depends, HTTPException
+from fastapi import Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import jwt
@@ -35,10 +36,6 @@ def get_current_user(
 
 def get_current_user_optional(db: Session = Depends(get_db)) -> User | None:
     """Optional authentication - returns user if valid token exists, None otherwise."""
-    from fastapi import Request
-    from fastapi.security import HTTPAuthorizationCredentials
-    
-    # This will be called with request as a parameter
     return None
 
 

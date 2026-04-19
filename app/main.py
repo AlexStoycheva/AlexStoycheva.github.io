@@ -387,6 +387,15 @@ def get_me(user: User = Depends(get_current_user)):
     }
 
 
+@app.get("/my-token")
+def get_my_token(request: Request):
+    """Get current user's token for API testing."""
+    token = request.cookies.get("token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"token": token}
+
+
 @app.post("/logout")
 def logout():
     """Logout - clears the auth cookie."""
@@ -432,6 +441,40 @@ def create_rule(
     db.refresh(rule)
     
     return {"id": rule.id, "message": "Alert rule created successfully"}
+
+
+@app.get("/alert-rules")
+def get_alert_rules(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    
+    # Get all alert rules
+    rules = db.query(AlertRule).all()
+    
+    # Filter for non-admin users (only their own sensors)
+    if not is_admin(user):
+        # Get user's device IDs
+        user_devices = db.query(Device).filter(Device.user_id == user.id).all()
+        user_device_ids = [d.id for d in user_devices]
+        # Get sensors for those devices
+        user_sensors = db.query(Sensor).filter(Sensor.device_id.in_(user_device_ids)).all()
+        user_sensor_ids = [s.id for s in user_sensors]
+        # Filter rules
+        rules = [r for r in rules if r.sensor_id in user_sensor_ids]
+    
+    return [
+        {
+            "id": r.id,
+            "sensor_id": r.sensor_id,
+            "min_value": r.min_value,
+            "max_value": r.max_value,
+            "is_active": r.is_active,
+            "created_at": r.created_at.isoformat() if r.created_at else None
+        }
+        for r in rules
+    ]
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -492,37 +535,103 @@ def f_to_c(f):
 
 @app.post("/ingest/ecowitt")
 async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
+    """
+    Receive data from Ecowitt weather station.
+    
+    Fully dynamic: maps Ecowitt fields to measurement types by name, then finds
+    the corresponding sensor for the given device.
+    
+    Query params:
+    - device_id: which device this data belongs to (required)
+    
+    The system automatically:
+    1. Looks up measurement types by name (temperature, humidity, etc.)
+    2. Finds sensors for that device + measurement type
+    3. Applies appropriate conversion (F→C for temp, none for humidity)
+    """
     form = await request.form()
     data = dict(form)
+    print("Received data:", data)
+
+    # Get device_id from query params
+    device_id = request.query_params.get("device_id")
+    if not device_id:
+        return {"status": "error", "detail": "device_id query parameter is required"}
+    
+    try:
+        device_id = int(device_id)
+    except ValueError:
+        return {"status": "error", "detail": "device_id must be an integer"}
+
+    # Verify device exists
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        return {"status": "error", "detail": f"Device {device_id} not found"}
+
+    # Get all measurement types from DB
+    measurement_types = db.query(MeasurementType).all()
+    meas_type_by_name = {mt.name: mt.id for mt in measurement_types}
+    
+    # Get sensors for this device, indexed by measurement_type_id
+    sensors = db.query(Sensor).filter(Sensor.device_id == device_id).all()
+    sensors_by_type = {s.measurement_type_id: s.id for s in sensors}
+
+    # Dynamic field-to-measurement-type mapping (by name, not ID)
+    # Converter: function to transform the value (None = no conversion)
+    ecowitt_field_map = {
+        "temp1f": ("temperature", f_to_c),
+        "tempinf": ("temperature", f_to_c),
+        "humidity1": ("humidity", None),
+        "humidityin": ("humidity", None),
+        "baromrelin": ("pressure", None),
+        "baromabsin": ("pressure", None),
+        "wind_speed": ("wind_speed", None),
+    }
 
     try:
         ts = datetime.strptime(data.get("dateutc"), "%Y-%m-%d %H:%M:%S")
 
-        temp_f = data.get("temp1f")
-        temp_c = f_to_c(temp_f) if temp_f else None
-
-        humidity = data.get("humidity1")
-
-        if temp_c is not None:
-            temp_measurement = Measurement(
-                sensor_id=1,  # TODO: сложи правилния sensor_id
-                ts=ts,
-                value=temp_c
-            )
-            db.add(temp_measurement)
-
-        if humidity is not None:
-            humidity_measurement = Measurement(
-                sensor_id=2,  # TODO: друг sensor_id
-                ts=ts,
-                value=float(humidity)
-            )
-            db.add(humidity_measurement)
+        for ecowitt_field, (meas_type_name, converter) in ecowitt_field_map.items():
+            # Skip if this field wasn't sent
+            if ecowitt_field not in data:
+                continue
+                
+            value = data.get(ecowitt_field)
+            if not value:
+                continue
+            
+            # Find measurement type ID by name
+            meas_type_id = meas_type_by_name.get(meas_type_name)
+            if not meas_type_id:
+                print(f"Unknown measurement type: {meas_type_name}")
+                continue
+            
+            # Find sensor for this device + measurement type
+            sensor_id = sensors_by_type.get(meas_type_id)
+            if not sensor_id:
+                print(f"No sensor for device {device_id}, measurement type {meas_type_name}")
+                continue
+            
+            # Convert value if needed
+            try:
+                if converter:
+                    converted_value = converter(value)
+                else:
+                    converted_value = float(value)
+                    
+                measurement = Measurement(
+                    sensor_id=sensor_id,
+                    ts=ts,
+                    value=converted_value
+                )
+                db.add(measurement)
+            except (ValueError, TypeError) as ve:
+                print(f"Skipping {ecowitt_field}: invalid value {value} - {ve}")
 
         db.commit()
-
-        return {"status": "ok"}
+        return {"status": "ok", "message": "Data ingested successfully"}
 
     except Exception as e:
         print("Error:", e)
+        db.rollback()
         return {"status": "error", "detail": str(e)}
