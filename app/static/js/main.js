@@ -187,7 +187,7 @@ async function createAlert() {
         payload.min_value = parseFloat(alertValue);
     }
 
-    await fetch("/alert-rules", {
+    const res = await fetch("/alert-rules", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -196,7 +196,12 @@ async function createAlert() {
         body: JSON.stringify(payload)
     });
 
-    alert("Alert saved!");
+    if (res.ok) {
+        alert("Alert saved!");
+    } else {
+        const error = await res.json();
+        alert("Error: " + (error.detail || "Failed to create alert"));
+    }
 }
 
 window.addEventListener("DOMContentLoaded", () => {

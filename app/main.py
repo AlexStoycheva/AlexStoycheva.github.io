@@ -337,9 +337,12 @@ def dashboard_page(request: Request):
     # Get all measurement types
     measurement_types = db.query(MeasurementType).all()
     
+    from app.auth import is_admin
+    
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "username": user.first_name,
+        "is_admin": is_admin(user),
         "devices": [{"id": d.id, "name": d.name, "location": d.location_name} for d in devices],
         "measurement_types": [{"id": m.id, "name": m.name, "unit": m.unit} for m in measurement_types]
     })
