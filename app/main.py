@@ -15,7 +15,7 @@ from app.schemas import (
     MeasurementStatsResponse
 )
 
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from fastapi import Response
@@ -198,7 +198,7 @@ def get_measurement_stats(sensor_id: int, db: Session = Depends(get_db)):
     )
 
 
-@app.post("/login", response_model=TokenResponse)
+@app.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
 
@@ -207,7 +207,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_access_token({"user_id": user.id})
 
-    response = RedirectResponse(url="/dashboard", status_code=302)
+    # Return JSON token AND set cookie for dashboard
+    response = JSONResponse(content={"access_token": token, "token_type": "bearer"})
     response.set_cookie(key="token", value=token, httponly=True, samesite="lax")
     return response
 
@@ -239,8 +240,32 @@ def create_rule(
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
-def dashboard_page(request: Request, user: User = Depends(get_current_user)):
-    """Dashboard page - requires authentication."""
+def dashboard_page(request: Request):
+    """Dashboard page - requires authentication via cookie or header."""
+    # Check for token in cookies
+    token = request.cookies.get("token")
+    
+    # Also check Authorization header
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    if not token:
+        return RedirectResponse(url="/login-page", status_code=302)
+    
+    try:
+        from app.auth import get_current_user
+        
+        class FakeCredentials:
+            credentials = token
+        
+        user = get_current_user(
+            credentials=FakeCredentials(),
+            db=next(get_db())
+        )
+    except:
+        return RedirectResponse(url="/login-page", status_code=302)
+    
     return templates.TemplateResponse("dashboard.html", {
         "request": request
     })
