@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Body
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -471,6 +471,67 @@ def create_rule(
     db.refresh(rule)
     
     return {"id": rule.id, "message": "Alert rule created successfully"}
+
+
+@app.put("/alert-rules/{rule_id}")
+def update_alert_rule(
+    rule_id: int,
+    sensor_id: int = Body(None),
+    min_value: float = Body(None),
+    max_value: float = Body(None),
+    is_active: bool = Body(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    
+    rule = db.query(AlertRule).filter(AlertRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+    
+    # Check permission
+    sensor = db.query(Sensor).filter(Sensor.id == rule.sensor_id).first()
+    device = db.query(Device).filter(Device.id == sensor.device_id).first()
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to modify this alert rule")
+    
+    # Update fields
+    if sensor_id is not None:
+        rule.sensor_id = sensor_id
+    if min_value is not None:
+        rule.min_value = min_value
+    if max_value is not None:
+        rule.max_value = max_value
+    if is_active is not None:
+        rule.is_active = is_active
+    
+    db.commit()
+    db.refresh(rule)
+    
+    return {"id": rule.id, "message": "Alert rule updated successfully"}
+
+
+@app.delete("/alert-rules/{rule_id}")
+def delete_alert_rule(
+    rule_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.auth import is_admin
+    
+    rule = db.query(AlertRule).filter(AlertRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+    
+    # Check permission
+    sensor = db.query(Sensor).filter(Sensor.id == rule.sensor_id).first()
+    device = db.query(Device).filter(Device.id == sensor.device_id).first()
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this alert rule")
+    
+    db.delete(rule)
+    db.commit()
+    
+    return {"message": "Alert rule deleted successfully"}
 
 
 @app.get("/alert-rules")

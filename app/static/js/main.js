@@ -168,14 +168,14 @@ async function expandChart(sensorId) {
     
     if (!modal) {
         overlay.innerHTML += `
-            <div id="expandChartModal" class="modal" style="width: 90%; max-width: 1000px;">
+            <div id="expandChartModal" class="modal" style="width: 90%; max-width: 1100px; max-height: 80vh;">
                 <div class="modal-header">
                     <h3 id="expandChartTitle">Chart</h3>
                     <button type="button" class="close-modal" onclick="closeExpandModal()">×</button>
                 </div>
-                <div class="modal-body">
-                    <div class="current-value" id="expandCurrentValue" style="text-align: center; margin-bottom: 20px;"></div>
-                    <canvas id="expandChart"></canvas>
+                <div class="modal-body" style="max-height: calc(80vh - 60px); overflow-y: auto;">
+                    <div class="current-value" id="expandCurrentValue" style="text-align: center; margin-bottom: 15px;"></div>
+                    <canvas id="expandChart" style="max-height: 50vh;"></canvas>
                 </div>
             </div>
         `;
@@ -267,47 +267,6 @@ async function logout() {
     
     localStorage.removeItem("token");
     window.location.href = "/login-page";
-}
-
-
-// ALERT CREATE
-async function createAlert() {
-    const token = getToken() || localStorage.getItem("token");
-    
-    const sensorId = document.getElementById("sensorSelect").value;
-    const alertType = document.getElementById("alertType").value;
-    const alertValue = document.getElementById("alertValue").value;
-
-    if (!sensorId || !alertValue) {
-        alert("Please fill all fields");
-        return;
-    }
-
-    const payload = {
-        sensor_id: parseInt(sensorId),
-    };
-
-    if (alertType === "max") {
-        payload.max_value = parseFloat(alertValue);
-    } else {
-        payload.min_value = parseFloat(alertValue);
-    }
-
-    const res = await fetch("/alert-rules", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + token
-        },
-        body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
-        alert("Alert saved!");
-    } else {
-        const error = await res.json();
-        alert("Error: " + (error.detail || "Failed to create alert"));
-    }
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -614,6 +573,7 @@ async function showAlertsModal() {
     
     const token = getToken() || localStorage.getItem("token");
     const container = document.getElementById("alertsList");
+    const sensorSelect = document.getElementById("newAlertSensor");
     container.innerHTML = "Loading...";
     
     // Get user's sensors first
@@ -622,6 +582,10 @@ async function showAlertsModal() {
     });
     const sensors = await sensorsRes.json();
     const sensorIds = sensors.map(s => s.id);
+    
+    // Populate sensor dropdown
+    sensorSelect.innerHTML = '<option value="">Select Sensor</option>' + 
+        sensors.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
     
     // Get all alert rules
     const rulesRes = await fetch("/alert-rules", {
@@ -642,15 +606,139 @@ async function showAlertsModal() {
     sensors.forEach(s => sensorMap[s.id] = s.name);
     
     container.innerHTML = userRules.map(rule => `
-        <div class="alert-item">
-            <div class="alert-sensor">Sensor: ${sensorMap[rule.sensor_id] || 'Unknown'}</div>
-            <div class="alert-rule">
-                ${rule.min_value ? `Min: ${rule.min_value}` : ''}
-                ${rule.max_value ? `Max: ${rule.max_value}` : ''}
+        <div class="alert-item" data-id="${rule.id}">
+            <div class="alert-item-content">
+                <div class="alert-sensor">Sensor: ${sensorMap[rule.sensor_id] || 'Unknown'}</div>
+                <div class="alert-rule">
+                    ${rule.min_value ? `Min: ${rule.min_value}` : ''}
+                    ${rule.max_value ? `Max: ${rule.max_value}` : ''}
+                </div>
+                <div class="alert-status ${rule.is_active ? 'active' : 'resolved'}">
+                    ${rule.is_active ? 'Active' : 'Inactive'}
+                </div>
             </div>
-            <div class="alert-status ${rule.is_active ? 'active' : 'resolved'}">
-                ${rule.is_active ? 'Active' : 'Inactive'}
+            <div class="alert-item-actions">
+                <button class="edit-btn" onclick="editAlert(${rule.id}, ${rule.sensor_id}, ${rule.min_value || 'null'}, ${rule.max_value || 'null'}, ${rule.is_active})">Edit</button>
+                <button class="delete-btn" onclick="deleteAlert(${rule.id})">Delete</button>
             </div>
         </div>
     `).join("");
+}
+
+// Create alert from modal
+async function createAlertFromModal() {
+    const token = getToken() || localStorage.getItem("token");
+    const sensor_id = document.getElementById("newAlertSensor").value;
+    const alertType = document.getElementById("newAlertType").value;
+    const value = parseFloat(document.getElementById("newAlertValue").value);
+    
+    if (!sensor_id || isNaN(value)) {
+        alert("Please select a sensor and enter a value");
+        return;
+    }
+    
+    const payload = {
+        sensor_id: parseInt(sensor_id),
+        min_value: alertType === "min" ? value : null,
+        max_value: alertType === "max" ? value : null
+    };
+    
+    try {
+        const res = await fetch("/alert-rules", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + token,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Failed to create alert");
+        }
+        
+        // Clear form
+        document.getElementById("newAlertSensor").value = "";
+        document.getElementById("newAlertValue").value = "";
+        
+        // Refresh alerts
+        showAlertsModal();
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
+}
+
+// Edit alert
+async function editAlert(ruleId, sensorId, minValue, maxValue, isActive) {
+    const token = getToken() || localStorage.getItem("token");
+    
+    // Get current sensors for dropdown
+    const sensorsRes = await fetch("/sensors", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const sensors = await sensorsRes.json();
+    
+    const currentMin = minValue === 'null' ? '' : minValue;
+    const currentMax = maxValue === 'null' ? '' : maxValue;
+    const alertType = maxValue !== 'null' ? 'max' : 'min';
+    const currentValue = maxValue !== 'null' ? maxValue : minValue;
+    
+    const newSensorId = prompt("Sensor ID:", sensorId);
+    if (newSensorId === null) return;
+    
+    const newAlertType = prompt("Alert type (max/min):", alertType);
+    if (newAlertType === null) return;
+    
+    const newValue = prompt("Value:", currentValue);
+    if (newValue === null) return;
+    
+    const payload = {
+        sensor_id: parseInt(newSensorId),
+        min_value: newAlertType === "min" ? parseFloat(newValue) : null,
+        max_value: newAlertType === "max" ? parseFloat(newValue) : null
+    };
+    
+    try {
+        const res = await fetch(`/alert-rules/${ruleId}`, {
+            method: "PUT",
+            headers: {
+                "Authorization": "Bearer " + token,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Failed to update alert");
+        }
+        
+        showAlertsModal();
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
+}
+
+// Delete alert
+async function deleteAlert(ruleId) {
+    if (!confirm("Are you sure you want to delete this alert rule?")) return;
+    
+    const token = getToken() || localStorage.getItem("token");
+    
+    try {
+        const res = await fetch(`/alert-rules/${ruleId}`, {
+            method: "DELETE",
+            headers: { "Authorization": "Bearer " + token }
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Failed to delete alert");
+        }
+        
+        showAlertsModal();
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
 }

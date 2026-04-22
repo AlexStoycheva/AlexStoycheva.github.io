@@ -109,7 +109,9 @@ body {
     border-radius: 12px;
     width: 400px;
     max-width: 90%;
+    max-height: 90vh;
     box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    overflow: hidden;
 }
 
 .modal-header {
@@ -232,12 +234,89 @@ body {
 }
 
 .alert-status.active {
-    background: #e74c3c;
+    background: #2ecc71;
     color: white;
 }
 
 .alert-status.resolved {
     background: #2ecc71;
+    color: white;
+}
+
+/* Inline alert form in modal */
+.alert-form-inline {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.alert-form-inline h4 {
+    /* margin: 0 0 10px 0; */
+    color: #333;
+}
+
+.form-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.form-row select, .form-row input {
+    flex: 1;
+    min-width: 100px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.form-row button {
+    padding: 8px 15px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.form-row button:hover {
+    background: #2980b9;
+}
+
+/* Editable alert item */
+.alert-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+.alert-item-content {
+    flex: 1;
+}
+
+.alert-item-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.alert-item-actions button {
+    padding: 5px 10px;
+    font-size: 12px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.alert-item-actions .edit-btn {
+    background: #f39c12;
+    color: white;
+}
+
+.alert-item-actions .delete-btn {
+    background: #e74c3c;
     color: white;
 }
 
