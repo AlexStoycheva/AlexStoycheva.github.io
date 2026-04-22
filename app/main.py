@@ -582,19 +582,34 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     data = dict(form)
 
-    # Get device_id from query params
-    device_id = request.query_params.get("device_id")
+    passkey = data.get("PASSKEY")
+
+    if not passkey:
+        print("Missing PASSKEY in request")
+        return {"status": "error", "detail": "Missing PASSKEY"}
+
+    device = db.query(Device).filter(Device.passkey == passkey).first()
+
+    if not device:
+        print(f"Unknown device: {device}")
+        return {"status": "error", "detail": "Unknown device"}
+
+    device_id = device.id
+
     if not device_id:
+        print("device_id query parameter is required")
         return {"status": "error", "detail": "device_id query parameter is required"}
     
     try:
         device_id = int(device_id)
     except ValueError:
+        print("device_id must be an integer")
         return {"status": "error", "detail": "device_id must be an integer"}
 
     # Verify device exists
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
+        print(f"Device {device_id} not found in database")
         return {"status": "error", "detail": f"Device {device_id} not found"}
 
     # Get all measurement types from DB
@@ -603,30 +618,32 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
     
     # Get sensors for this device, indexed by measurement_type_id
     sensors = db.query(Sensor).filter(Sensor.device_id == device_id).all()
-    sensors_by_type = {s.measurement_type_id: s.id for s in sensors}
+    sensors_by_type = {(s.measurement_type_id, s.location): s.id for s in sensors}
 
     # Dynamic field-to-measurement-type mapping (by name, not ID)
     # Converter: function to transform the value (None = no conversion)
     ecowitt_field_map = {
-        "temp1f": ("temperature", f_to_c),
-        "tempinf": ("temperature", f_to_c),
-        "humidity1": ("humidity", None),
-        "humidityin": ("humidity", None),
-        "baromrelin": ("pressure", None),
-        "baromabsin": ("pressure", None),
-        "wind_speed": ("wind_speed", None),
+        "temp1f": ("temperature", f_to_c, "outdoor"),
+        "tempinf": ("temperature", f_to_c, "indoor"),
+        "humidity1": ("humidity", None, "outdoor"),
+        "humidityin": ("humidity", None, "indoor"),
+        "baromrelin": ("pressure", None, "indoor"),
+        "baromabsin": ("pressure", None, "outdoor"),
+        "wind_speed": ("wind_speed", None, "outdoor"),
     }
 
     try:
         ts = datetime.strptime(data.get("dateutc"), "%Y-%m-%d %H:%M:%S")
 
-        for ecowitt_field, (meas_type_name, converter) in ecowitt_field_map.items():
+        for ecowitt_field, (meas_type_name, converter, location) in ecowitt_field_map.items():
             # Skip if this field wasn't sent
             if ecowitt_field not in data:
+                print(f"Field {ecowitt_field} not in data, skipping")
                 continue
                 
             value = data.get(ecowitt_field)
             if not value:
+                print(f"Field {ecowitt_field} has no value, skipping")
                 continue
             
             # Find measurement type ID by name
@@ -636,7 +653,7 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
                 continue
             
             # Find sensor for this device + measurement type
-            sensor_id = sensors_by_type.get(meas_type_id)
+            sensor_id = sensors_by_type.get((meas_type_id, location))
             if not sensor_id:
                 print(f"No sensor for device {device_id}, measurement type {meas_type_name}")
                 continue

@@ -43,6 +43,7 @@ class Device(Base):
     serial_number = Column(String(100), unique=True)
     location_name = Column(String(100))
     status = Column(String(20), default="active")
+    passkey = Column(String(100), unique=True, nullable=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     sensors = relationship("Sensor", back_populates="device")
