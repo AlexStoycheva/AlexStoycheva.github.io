@@ -39,9 +39,7 @@
     </div>
     <div id="chartsContainer" class="charts-grid"></div>
     
-    <!-- Modals -->
     <div id="modalOverlay" class="modal-overlay" style="display:none;">
-        <!-- Add Device Modal -->
         <div id="addDeviceModal" class="modal" style="display:none;">
             <div class="modal-header">
                 <h3>Add Device</h3>
@@ -68,7 +66,6 @@
             </div>
         </div>
 
-        <!-- Remove Sensor Modal -->
         <div id="removeSensorModal" class="modal" style="display:none;">
             <div class="modal-header">
                 <h3>Remove Sensor</h3>
@@ -83,7 +80,6 @@
             </div>
         </div>
 
-        <!-- Remove Device Modal -->
         <div id="removeDeviceModal" class="modal" style="display:none;">
             <div class="modal-header">
                 <h3>Remove Device</h3>
@@ -99,7 +95,6 @@
             </div>
         </div>
 
-        <!-- Add Measurement Type Modal -->
         <div id="addMeasurementTypeModal" class="modal" style="display:none;">
             <div class="modal-header">
                 <h3>Add Measurement Type</h3>
@@ -118,14 +113,12 @@
             </div>
         </div>
 
-        <!-- View Alerts Modal -->
         <div id="alertsModal" class="modal" style="display:none; width: 600px;">
             <div class="modal-header">
                 <h3>Manage Alerts</h3>
                 <button type="button" class="close-modal" onclick="closeModals()">×</button>
             </div>
             <div class="modal-body">
-                <!-- Add new alert -->
                 <div class="alert-form-inline">
                     <h4>Create New Alert</h4>
                     <div class="form-row">
@@ -140,7 +133,6 @@
                         <button type="button" onclick="createAlertFromModal()">Add</button>
                     </div>
                 </div>
-                <!-- Existing alerts -->
                 <h4>Existing Alerts</h4>
                 <div id="alertsList"></div>
             </div>

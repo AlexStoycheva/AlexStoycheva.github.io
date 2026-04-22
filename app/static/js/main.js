@@ -1,4 +1,3 @@
-// Helper function to get token from cookie
 function getToken() {
     const name = "token=";
     const decodedCookie = decodeURIComponent(document.cookie);
@@ -15,7 +14,6 @@ function getToken() {
     return null;
 }
 
-// LOGIN
 document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -35,17 +33,14 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
         return;
     }
 
-    // Get token for FastAPI docs
     const data = await res.json();
     console.log("Your API token (for FastAPI docs):", data.access_token);
     console.log("Use: Bearer " + data.access_token);
 
-    // Token is now set as cookie by the server, just redirect
     window.location.href = "/dashboard";
 });
 
 
-// DASHBOARD - Multiple charts
 let chartInstances = {};
 
 async function loadAllCharts() {
@@ -53,11 +48,9 @@ async function loadAllCharts() {
     const hours = document.getElementById("timeRange").value;
     const container = document.getElementById("chartsContainer");
     
-    // Destroy existing charts
     Object.values(chartInstances).forEach(chart => chart.destroy());
     chartInstances = {};
     
-    // Get all sensors for user
     const sensorsRes = await fetch("/sensors", {
         headers: { "Authorization": "Bearer " + token }
     });
@@ -70,15 +63,12 @@ async function loadAllCharts() {
     
     container.innerHTML = "";
     
-    // Get measurement types for units
     const mtRes = await fetch("/measurement-types");
     const measurementTypes = await mtRes.json();
     const mtMap = {};
     measurementTypes.forEach(mt => mtMap[mt.id] = mt);
     
-    // Create a chart for each sensor
     for (const sensor of sensors) {
-        // Create card
         const card = document.createElement("div");
         card.className = "chart-card";
         card.onclick = () => expandChart(sensor.id);
@@ -89,13 +79,11 @@ async function loadAllCharts() {
         `;
         container.appendChild(card);
         
-        // Fetch measurements
         const res = await fetch(`/measurements/by-sensor/${sensor.id}?hours=${hours}`, {
             headers: { "Authorization": "Bearer " + token }
         });
         const data = await res.json();
         
-        // Update current value
         const valueEl = document.getElementById(`value-${sensor.id}`);
         if (data.length > 0) {
             const latest = data[data.length - 1];
@@ -105,7 +93,6 @@ async function loadAllCharts() {
             valueEl.innerHTML = "No data<span class='unit'></span>";
         }
         
-        // Create chart
         const labels = data.map(x => x.ts);
         const values = data.map(x => x.value);
         
@@ -139,30 +126,25 @@ async function loadAllCharts() {
     }
 }
 
-// Expand chart to fullscreen modal
 async function expandChart(sensorId) {
     const token = getToken() || localStorage.getItem("token");
     const hours = document.getElementById("timeRange").value;
     
-    // Get sensor info
     const sensorRes = await fetch(`/sensors/${sensorId}`, {
         headers: { "Authorization": "Bearer " + token }
     });
     const sensor = await sensorRes.json();
     
-    // Get measurement type
     const mtRes = await fetch(`/measurement-types/${sensor.measurement_type_id}`, {
         headers: { "Authorization": "Bearer " + token }
     });
     const mt = await mtRes.json();
     
-    // Get measurements
     const dataRes = await fetch(`/measurements/by-sensor/${sensorId}?hours=${hours}`, {
         headers: { "Authorization": "Bearer " + token }
     });
     const data = await dataRes.json();
     
-    // Show modal
     const overlay = document.getElementById("modalOverlay");
     let modal = document.getElementById("expandChartModal");
     
@@ -184,7 +166,6 @@ async function expandChart(sensorId) {
     
     document.getElementById("expandChartTitle").textContent = sensor.name;
     
-    // Current value
     const valueEl = document.getElementById("expandCurrentValue");
     if (data.length > 0) {
         const latest = data[data.length - 1];
@@ -196,7 +177,6 @@ async function expandChart(sensorId) {
     overlay.style.display = "flex";
     modal.style.display = "block";
     
-    // Create expanded chart
     const labels = data.map(x => x.ts);
     const values = data.map(x => x.value);
     
@@ -235,7 +215,6 @@ function closeExpandModal() {
 }
 
 
-// USER INFO
 async function loadUser() {
     const token = getToken() || localStorage.getItem("token");
 
@@ -254,7 +233,6 @@ async function loadUser() {
 }
 
 
-// LOGOUT
 async function logout() {
     const token = getToken() || localStorage.getItem("token");
     
@@ -273,7 +251,6 @@ window.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("chartsContainer")) {
         loadUser();
         
-        // Populate devices dropdown
         const deviceSelect = document.getElementById("deviceSelect");
         if (deviceSelect && typeof devices !== 'undefined') {
             devices.forEach(device => {
@@ -284,7 +261,6 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
         
-        // Populate measurement types dropdown
         const measurementTypeSelect = document.getElementById("measurementTypeSelect");
         if (measurementTypeSelect && typeof measurementTypes !== 'undefined') {
             measurementTypes.forEach(mt => {
@@ -295,18 +271,15 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
         
-        // Load all charts for all sensors
         loadAllCharts();
     }
 });
 
-// Load sensors when device is selected
 async function loadSensors() {
     const deviceId = document.getElementById("deviceSelect").value;
     const measurementTypeId = document.getElementById("measurementTypeSelect").value;
     const sensorSelect = document.getElementById("sensorSelect");
     
-    // Clear existing options
     sensorSelect.innerHTML = '<option value="">Select Sensor</option>';
     
     if (!deviceId || !measurementTypeId) return;
@@ -333,20 +306,16 @@ function updateSensorOptions() {
     loadSensors();
 }
 
-// ========== MANAGEMENT MODALS ==========
-
 function closeModals() {
     document.getElementById("modalOverlay").style.display = "none";
     document.querySelectorAll(".modal").forEach(m => m.style.display = "none");
 }
 
-// Show Add Device Modal
 async function showAddDeviceModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
     document.getElementById("addDeviceModal").style.display = "block";
     
-    // Populate measurement type checkboxes
     const container = document.getElementById("sensorCheckboxes");
     container.innerHTML = "";
     
@@ -359,7 +328,6 @@ async function showAddDeviceModal() {
     }
 }
 
-// Create Device with Sensors
 async function createDevice() {
     const token = getToken() || localStorage.getItem("token");
     
@@ -367,7 +335,6 @@ async function createDevice() {
     const serial = document.getElementById("newDeviceSerial").value;
     const location = document.getElementById("newDeviceLocation").value;
     
-    // Get selected measurement types
     const checkboxes = document.querySelectorAll("#sensorCheckboxes input:checked");
     const selectedTypes = Array.from(checkboxes).map(cb => parseInt(cb.value));
     
@@ -380,7 +347,6 @@ async function createDevice() {
         return;
     }
     
-    // Create device first
     const deviceRes = await fetch("/devices", {
         method: "POST",
         headers: {
@@ -402,7 +368,6 @@ async function createDevice() {
     
     const device = await deviceRes.json();
     
-    // Create sensors for each selected measurement type
     for (const measTypeId of selectedTypes) {
         const measType = measurementTypes.find(mt => mt.id === measTypeId);
         await fetch("/sensors", {
@@ -425,14 +390,12 @@ async function createDevice() {
     location.reload();
 }
 
-// Show Add Measurement Type Modal
 function showAddMeasurementTypeModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
     document.getElementById("addMeasurementTypeModal").style.display = "block";
 }
 
-// Create Measurement Type
 async function createMeasurementType() {
     const token = getToken() || localStorage.getItem("token");
     
@@ -463,7 +426,6 @@ async function createMeasurementType() {
     }
 }
 
-// Show Remove Sensor Modal
 async function showRemoveSensorModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
@@ -487,7 +449,6 @@ async function showRemoveSensorModal() {
     });
 }
 
-// Delete Sensor
 async function deleteSensor() {
     const token = getToken() || localStorage.getItem("token");
     const sensorId = document.getElementById("sensorToRemove").value;
@@ -512,7 +473,6 @@ async function deleteSensor() {
     }
 }
 
-// Show Remove Device Modal
 async function showRemoveDeviceModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
@@ -536,7 +496,6 @@ async function showRemoveDeviceModal() {
     });
 }
 
-// Delete Device
 async function deleteDevice() {
     const token = getToken() || localStorage.getItem("token");
     const deviceId = document.getElementById("deviceToRemove").value;
@@ -565,7 +524,6 @@ async function deleteDevice() {
     }
 }
 
-// Show Alerts Modal
 async function showAlertsModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
@@ -576,24 +534,20 @@ async function showAlertsModal() {
     const sensorSelect = document.getElementById("newAlertSensor");
     container.innerHTML = "Loading...";
     
-    // Get user's sensors first
     const sensorsRes = await fetch("/sensors", {
         headers: { "Authorization": "Bearer " + token }
     });
     const sensors = await sensorsRes.json();
     const sensorIds = sensors.map(s => s.id);
     
-    // Populate sensor dropdown
     sensorSelect.innerHTML = '<option value="">Select Sensor</option>' + 
         sensors.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
     
-    // Get all alert rules
     const rulesRes = await fetch("/alert-rules", {
         headers: { "Authorization": "Bearer " + token }
     });
     const rules = await rulesRes.json();
     
-    // Filter to user's sensors (or all if admin)
     const userRules = rules.filter(r => sensorIds.includes(r.sensor_id));
     
     if (userRules.length === 0) {
@@ -601,7 +555,6 @@ async function showAlertsModal() {
         return;
     }
     
-    // Get sensor names for display
     const sensorMap = {};
     sensors.forEach(s => sensorMap[s.id] = s.name);
     
@@ -625,7 +578,6 @@ async function showAlertsModal() {
     `).join("");
 }
 
-// Create alert from modal
 async function createAlertFromModal() {
     const token = getToken() || localStorage.getItem("token");
     const sensor_id = document.getElementById("newAlertSensor").value;
@@ -658,22 +610,18 @@ async function createAlertFromModal() {
             throw new Error(err.detail || "Failed to create alert");
         }
         
-        // Clear form
         document.getElementById("newAlertSensor").value = "";
         document.getElementById("newAlertValue").value = "";
         
-        // Refresh alerts
         showAlertsModal();
     } catch (err) {
         alert("Error: " + err.message);
     }
 }
 
-// Edit alert
 async function editAlert(ruleId, sensorId, minValue, maxValue, isActive) {
     const token = getToken() || localStorage.getItem("token");
     
-    // Get current sensors for dropdown
     const sensorsRes = await fetch("/sensors", {
         headers: { "Authorization": "Bearer " + token }
     });
@@ -720,7 +668,6 @@ async function editAlert(ruleId, sensorId, minValue, maxValue, isActive) {
     }
 }
 
-// Delete alert
 async function deleteAlert(ruleId) {
     if (!confirm("Are you sure you want to delete this alert rule?")) return;
     

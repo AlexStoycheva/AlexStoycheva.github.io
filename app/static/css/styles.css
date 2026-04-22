@@ -31,7 +31,6 @@ body {
     gap: 10px;
 }
 
-/* Dropdown menu */
 .dropdown {
     position: relative;
     display: inline-block;
@@ -90,7 +89,6 @@ body {
     border-bottom: none;
 }
 
-/* Modal styles */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -243,7 +241,6 @@ body {
     color: white;
 }
 
-/* Inline alert form in modal */
 .alert-form-inline {
     margin-bottom: 20px;
     padding-bottom: 15px;
@@ -282,7 +279,6 @@ body {
     background: #2980b9;
 }
 
-/* Editable alert item */
 .alert-item {
     display: flex;
     justify-content: space-between;
@@ -320,7 +316,6 @@ body {
     color: white;
 }
 
-/* Charts grid for multiple sensors */
 .charts-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
