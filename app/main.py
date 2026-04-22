@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Body
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.db import engine
 from app.dependencies import get_db
@@ -17,6 +17,7 @@ from app.schemas import (
 
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Request
 from fastapi import Response
 
@@ -35,7 +36,6 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
     """Root route - redirects to dashboard if authenticated, otherwise to login."""
-    # Check for token in cookies or Authorization header
     token = request.cookies.get("token")
     
     auth_header = request.headers.get("Authorization")
@@ -44,26 +44,18 @@ def read_root(request: Request):
     
     if token:
         try:
-            from app.auth import get_current_user
-            from fastapi.security import HTTPAuthorizationCredentials
-            
             class FakeCredentials:
                 credentials = token
             
-            # Try to validate the token
             user = get_current_user(
                 credentials=FakeCredentials(),
                 db=next(get_db())
             )
             if user:
-                # Authenticated - redirect to dashboard
-                from fastapi.responses import RedirectResponse
                 return RedirectResponse(url="/dashboard", status_code=302)
         except:
             pass
     
-    # Not authenticated - redirect to login
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/login-page", status_code=302)
 
 @app.get("/health/db")
@@ -150,8 +142,6 @@ def get_devices(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
-    # Admin sees all devices, regular users see only their own
     if is_admin(user):
         devices = db.query(Device).all()
     else:
@@ -165,9 +155,7 @@ def get_sensors(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
-    
-    # Get devices user has access to
+
     if is_admin(user):
         devices = db.query(Device).all()
     else:
@@ -205,11 +193,9 @@ def create_measurement_type(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Only admins can create measurement types")
     
-    # Check if already exists
     existing = db.query(MeasurementType).filter(MeasurementType.name == name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Measurement type already exists")
@@ -229,11 +215,8 @@ def create_device(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
-    # Admin can create for any user, regular users can only create for themselves
     if not is_admin(user):
-        # Regular users can only create devices for themselves
-        pass  # will use user.id as owner
+        pass
     
     device = Device(
         name=name,
@@ -254,17 +237,14 @@ def delete_device(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
     
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
-    # Check permission: admin can delete any, regular users can only delete their own
+
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this device")
     
-    # Delete associated sensors first
     db.query(Sensor).filter(Sensor.device_id == device_id).delete()
     db.delete(device)
     db.commit()
@@ -280,17 +260,14 @@ def create_sensor(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
     
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
-    # Check permission
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to add sensor to this device")
     
-    # Check measurement type exists
     mt = db.query(MeasurementType).filter(MeasurementType.id == measurement_type_id).first()
     if not mt:
         raise HTTPException(status_code=404, detail="Measurement type not found")
@@ -312,8 +289,7 @@ def delete_sensor(
     sensor_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
-    from app.auth import is_admin
+);
     
     sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
     if not sensor:
@@ -321,7 +297,6 @@ def delete_sensor(
     
     device = db.query(Device).filter(Device.id == sensor.device_id).first()
     
-    # Check permission
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this sensor")
     
@@ -348,10 +323,8 @@ def get_measurements_by_sensor(
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
-    from datetime import timedelta
     cutoff = datetime.utcnow() - timedelta(hours=hours)
 
-    # Limit to max 500 points for chart performance
     measurements = (
         db.query(Measurement)
         .filter(Measurement.sensor_id == sensor_id)
@@ -395,7 +368,6 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_access_token({"user_id": user.id})
 
-    # Return JSON token AND set cookie for dashboard
     response = JSONResponse(content={"access_token": token, "token_type": "bearer"})
     response.set_cookie(key="token", value=token, httponly=True, samesite="lax")
     return response
@@ -440,7 +412,6 @@ def create_rule(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
     
     sensor_id = data.get("sensor_id")
     max_value = data.get("max_value")
@@ -449,17 +420,14 @@ def create_rule(
     if not sensor_id:
         raise HTTPException(status_code=400, detail="sensor_id is required")
     
-    # Check if sensor exists
     sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
     
-    # Check permission: admin can alert any sensor, regular users only their own
     device = db.query(Device).filter(Device.id == sensor.device_id).first()
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to create alert for this sensor")
     
-    # Create the alert rule
     rule = AlertRule(
         sensor_id=sensor_id,
         max_value=max_value,
@@ -488,13 +456,11 @@ def update_alert_rule(
     if not rule:
         raise HTTPException(status_code=404, detail="Alert rule not found")
     
-    # Check permission
     sensor = db.query(Sensor).filter(Sensor.id == rule.sensor_id).first()
     device = db.query(Device).filter(Device.id == sensor.device_id).first()
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to modify this alert rule")
     
-    # Update fields
     if sensor_id is not None:
         rule.sensor_id = sensor_id
     if min_value is not None:
@@ -516,13 +482,11 @@ def delete_alert_rule(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
     
     rule = db.query(AlertRule).filter(AlertRule.id == rule_id).first()
     if not rule:
         raise HTTPException(status_code=404, detail="Alert rule not found")
     
-    # Check permission
     sensor = db.query(Sensor).filter(Sensor.id == rule.sensor_id).first()
     device = db.query(Device).filter(Device.id == sensor.device_id).first()
     if not is_admin(user) and device.user_id != user.id:
@@ -539,20 +503,16 @@ def get_alert_rules(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from app.auth import is_admin
-    
-    # Get all alert rules
+
     rules = db.query(AlertRule).all()
     
-    # Filter for non-admin users (only their own sensors)
     if not is_admin(user):
-        # Get user's device IDs
         user_devices = db.query(Device).filter(Device.user_id == user.id).all()
         user_device_ids = [d.id for d in user_devices]
-        # Get sensors for those devices
+
         user_sensors = db.query(Sensor).filter(Sensor.device_id.in_(user_device_ids)).all()
         user_sensor_ids = [s.id for s in user_sensors]
-        # Filter rules
+
         rules = [r for r in rules if r.sensor_id in user_sensor_ids]
     
     return [
@@ -571,10 +531,8 @@ def get_alert_rules(
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard_page(request: Request):
     """Dashboard page - requires authentication via cookie or header."""
-    # Check for token in cookies
     token = request.cookies.get("token")
-    
-    # Also check Authorization header
+
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
@@ -584,9 +542,7 @@ def dashboard_page(request: Request):
     
     db = next(get_db())
     
-    try:
-        from app.auth import get_current_user
-        
+    try:        
         class FakeCredentials:
             credentials = token
         
@@ -597,9 +553,6 @@ def dashboard_page(request: Request):
     except:
         return RedirectResponse(url="/login-page", status_code=302)
     
-    from app.auth import is_admin
-    
-    # Get devices based on user role
     if is_admin(user):
         devices = db.query(Device).filter(Device.status == "active").all()
     else:
@@ -608,7 +561,6 @@ def dashboard_page(request: Request):
             Device.user_id == user.id
         ).all()
     
-    # Get all measurement types
     measurement_types = db.query(MeasurementType).all()
     
     return templates.TemplateResponse("dashboard.html", {
@@ -628,17 +580,6 @@ def f_to_c(f):
 async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
     """
     Receive data from Ecowitt weather station.
-    
-    Fully dynamic: maps Ecowitt fields to measurement types by name, then finds
-    the corresponding sensor for the given device.
-    
-    Query params:
-    - device_id: which device this data belongs to (required)
-    
-    The system automatically:
-    1. Looks up measurement types by name (temperature, humidity, etc.)
-    2. Finds sensors for that device + measurement type
-    3. Applies appropriate conversion (F→C for temp, none for humidity)
     """
     form = await request.form()
     data = dict(form)
@@ -667,22 +608,17 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
         print("device_id must be an integer")
         return {"status": "error", "detail": "device_id must be an integer"}
 
-    # Verify device exists
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         print(f"Device {device_id} not found in database")
         return {"status": "error", "detail": f"Device {device_id} not found"}
 
-    # Get all measurement types from DB
     measurement_types = db.query(MeasurementType).all()
     meas_type_by_name = {mt.name: mt.id for mt in measurement_types}
     
-    # Get sensors for this device, indexed by measurement_type_id
     sensors = db.query(Sensor).filter(Sensor.device_id == device_id).all()
     sensors_by_type = {(s.measurement_type_id, s.location): s.id for s in sensors}
 
-    # Dynamic field-to-measurement-type mapping (by name, not ID)
-    # Converter: function to transform the value (None = no conversion)
     ecowitt_field_map = {
         "temp1f": ("temperature", f_to_c, "outdoor"),
         "tempinf": ("temperature", f_to_c, "indoor"),
@@ -697,7 +633,6 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
         ts = datetime.strptime(data.get("dateutc"), "%Y-%m-%d %H:%M:%S")
 
         for ecowitt_field, (meas_type_name, converter, location) in ecowitt_field_map.items():
-            # Skip if this field wasn't sent
             if ecowitt_field not in data:
                 print(f"Field {ecowitt_field} not in data, skipping")
                 continue
@@ -707,19 +642,16 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
                 print(f"Field {ecowitt_field} has no value, skipping")
                 continue
             
-            # Find measurement type ID by name
             meas_type_id = meas_type_by_name.get(meas_type_name)
             if not meas_type_id:
                 print(f"Unknown measurement type: {meas_type_name}")
                 continue
             
-            # Find sensor for this device + measurement type
             sensor_id = sensors_by_type.get((meas_type_id, location))
             if not sensor_id:
                 print(f"No sensor for device {device_id}, measurement type {meas_type_name}")
                 continue
             
-            # Convert value if needed
             try:
                 if converter:
                     converted_value = converter(value)
