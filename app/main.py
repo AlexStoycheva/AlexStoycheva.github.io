@@ -289,7 +289,7 @@ def delete_sensor(
     sensor_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-);
+):
     
     sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
     if not sensor:
