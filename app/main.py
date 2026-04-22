@@ -153,6 +153,7 @@ def get_sensors(
     device_id: int = None,
     measurement_type_id: int = None,
     user: User = Depends(get_current_user),
+    location: str = None,
     db: Session = Depends(get_db)
 ):
 

@@ -43,6 +43,10 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
 
 let chartInstances = {};
 
+function capitalizeFirstLetter(val) {
+    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
+}
+
 async function loadAllCharts() {
     const token = getToken() || localStorage.getItem("token");
     const hours = document.getElementById("timeRange").value;
@@ -73,7 +77,7 @@ async function loadAllCharts() {
         card.className = "chart-card";
         card.onclick = () => expandChart(sensor.id);
         card.innerHTML = `
-            <h4>${sensor.name}</h4>
+            <h4>${sensor.name} - ${capitalizeFirstLetter(sensor.location)}</h4>
             <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
             <canvas id="chart-${sensor.id}"></canvas>
         `;
