@@ -70,7 +70,11 @@ class Sensor(Base):
 
     device = relationship("Device", back_populates="sensors")
     measurement_type = relationship("MeasurementType", back_populates="sensors")
-    measurements = relationship("Measurement", back_populates="sensor")
+    measurements = relationship(
+    "Measurement",
+    back_populates="sensor",
+    passive_deletes=True
+)
 
 class Measurement(Base):
     __tablename__ = "measurements"
