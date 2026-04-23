@@ -1,3 +1,17 @@
+const SENSOR_COLORS = {
+    1: { border: "#2ecc71", bg: "rgba(46, 204, 113, 0.2)" },
+    2: { border: "#3498db", bg: "rgba(52, 152, 219, 0.2)" },
+    3: { border: "#e67e22", bg: "rgba(230, 126, 34, 0.2)" },
+    4: { border: "#9b59b6", bg: "rgba(155, 89, 182, 0.2)" }
+};
+
+const UNIT_MAP = {
+    celsius: "°C",
+    fahrenheit: "°F",
+    percent: "%",
+    pressure: "hPa"
+};
+
 function getToken() {
     const name = "token=";
     const decodedCookie = decodeURIComponent(document.cookie);
@@ -87,17 +101,20 @@ async function loadAllCharts() {
             headers: { "Authorization": "Bearer " + token }
         });
         const data = await res.json();
-        
+        const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
         const valueEl = document.getElementById(`value-${sensor.id}`);
+
         if (data.length > 0) {
             const latest = data[data.length - 1];
             const mt = mtMap[sensor.measurement_type_id];
-            valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${mt ? mt.unit : ''}</span>`;
+            const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
+            valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${unit}</span>`;
+            valueEl.style.color = colors.border;
         } else {
             valueEl.innerHTML = "No data<span class='unit'></span>";
         }
         
-        const labels = data.map(x => x.ts);
+        const labels = data.map(x => formatTime(x.ts));
         const values = data.map(x => x.value);
         
         const ctx = document.getElementById(`chart-${sensor.id}`).getContext('2d');
@@ -108,8 +125,8 @@ async function loadAllCharts() {
                 datasets: [{
                     label: sensor.name,
                     data: values,
-                    borderColor: '#4CAF50',
-                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    borderColor: colors.border,
+                    backgroundColor: colors.bg,
                     fill: true,
                     tension: 0.3
                 }]
@@ -128,6 +145,11 @@ async function loadAllCharts() {
             }
         });
     }
+}
+
+function formatTime(ts) {
+    const date = new Date(ts);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 async function expandChart(sensorId) {
