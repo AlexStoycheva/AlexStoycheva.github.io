@@ -12,7 +12,8 @@ from app.schemas import (
     MeasurementResponse,
     DeviceResponse,
     SensorResponse,
-    MeasurementStatsResponse
+    MeasurementStatsResponse,
+    DeviceCreate
 )
 
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -210,26 +211,33 @@ def create_measurement_type(
 
 @app.post("/devices")
 def create_device(
-    name: str,
-    serial_number: str = None,
-    location_name: str = None,
+    device: DeviceCreate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    print(f"Creating device: {device}")
+
     if not is_admin(user):
         pass
-    
-    device = Device(
-        name=name,
-        serial_number=serial_number,
-        location_name=location_name,
+
+    new_device = Device(
+        name=device.name,
+        passkey=device.passkey,
+        serial_number=device.serial_number,
+        location_name=device.location_name,
         user_id=user.id,
         status="active"
     )
-    db.add(device)
+
+    db.add(new_device)
     db.commit()
-    db.refresh(device)
-    return {"id": device.id, "name": device.name, "message": "Device created"}
+    db.refresh(new_device)
+
+    return {
+        "id": new_device.id,
+        "name": new_device.name,
+        "message": "Device created"
+    }
 
 
 @app.delete("/devices/{device_id}")
@@ -291,7 +299,6 @@ def delete_sensor(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    
     sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")

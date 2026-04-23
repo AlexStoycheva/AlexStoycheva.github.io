@@ -1,5 +1,13 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Optional
+
+
+class DeviceCreate(BaseModel):
+    name: str
+    passkey: str
+    serial_number: Optional[str] = None
+    location_name: Optional[str] = None
 
 class UserBase(BaseModel):
     email: EmailStr

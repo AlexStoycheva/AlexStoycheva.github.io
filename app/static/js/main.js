@@ -337,6 +337,7 @@ async function createDevice() {
     
     const name = document.getElementById("newDeviceName").value;
     const serial = document.getElementById("newDeviceSerial").value;
+    const passkey = document.getElementById("newDevicePasskey").value;
     const location = document.getElementById("newDeviceLocation").value;
     
     const checkboxes = document.querySelectorAll("#sensorCheckboxes input:checked");
@@ -359,11 +360,12 @@ async function createDevice() {
         },
         body: JSON.stringify({
             name: name,
+            passkey: passkey,
             serial_number: serial,
             location_name: location
         })
     });
-    
+
     if (!deviceRes.ok) {
         const err = await deviceRes.json();
         alert("Error creating device: " + (err.detail || "Unknown error"));
@@ -391,7 +393,7 @@ async function createDevice() {
     
     alert("Device and sensors created successfully!");
     closeModals();
-    location.reload();
+    window.location.reload();
 }
 
 function showAddMeasurementTypeModal() {
