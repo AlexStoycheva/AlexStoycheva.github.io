@@ -102,7 +102,7 @@ async function loadAllCharts() {
         if (usersRes.ok) {
             const users = await usersRes.json();
             users.forEach(user => {
-                usersById[user.id] = user.email;
+                usersById[user.id] = user.first_name + ' ' + user.last_name;
             });
         }
     }
@@ -145,6 +145,7 @@ async function loadAllCharts() {
     }
 
     let lastOwnerLabel = null;
+    let currentOwnerPanel = null;
 
     for (const device of orderedDevices) {
         const deviceSensors = (sensorsByDevice[device.id] || [])
@@ -154,10 +155,14 @@ async function loadAllCharts() {
 
         const ownerLabel = usersById[device.user_id] || (device.user_id ? `User #${device.user_id}` : "Unassigned");
         if (typeof isAdmin !== "undefined" && isAdmin && ownerLabel !== lastOwnerLabel) {
+            currentOwnerPanel = document.createElement("section");
+            currentOwnerPanel.className = "chart-user-panel";
+
             const ownerHeading = document.createElement("h2");
             ownerHeading.className = "chart-owner-heading";
             ownerHeading.textContent = ownerLabel;
-            container.appendChild(ownerHeading);
+            currentOwnerPanel.appendChild(ownerHeading);
+            container.appendChild(currentOwnerPanel);
             lastOwnerLabel = ownerLabel;
         }
 
@@ -170,7 +175,7 @@ async function loadAllCharts() {
             </div>
             <div class="device-chart-grid"></div>
         `;
-        container.appendChild(section);
+        (currentOwnerPanel || container).appendChild(section);
 
         const grid = section.querySelector(".device-chart-grid");
 

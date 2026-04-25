@@ -375,14 +375,40 @@ body {
     margin-top: 20px;
 }
 
+.chart-user-panel {
+    margin: 18px 30px 30px;
+    padding: 18px;
+    background: white;
+    border: 1px solid #dfe5ea;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
 .chart-owner-heading {
-    margin: 28px 30px 10px;
+    margin: 0 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #edf0f2;
     font-size: 18px;
     color: #333;
 }
 
 .device-chart-section {
+    margin: 0 0 22px;
+    padding: 16px;
+    background: #f8fafb;
+    border: 1px solid #e8edf1;
+    border-radius: 8px;
+}
+
+.charts-grid > .device-chart-section {
     margin: 18px 30px 28px;
+    background: white;
+    border-color: #dfe5ea;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
+.device-chart-section:last-child {
+    margin-bottom: 0;
 }
 
 .device-chart-heading {
@@ -413,8 +439,9 @@ body {
 .chart-card {
     background: white;
     padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border: 1px solid #edf0f2;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
 }
