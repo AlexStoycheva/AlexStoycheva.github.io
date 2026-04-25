@@ -5,7 +5,18 @@ from datetime import datetime, timedelta
 
 from app.db import engine
 from app.dependencies import get_db
-from app.models import User, Sensor, Measurement, Device, Alert, AlertRule, MeasurementType
+from app.models import (
+    User, 
+    Sensor, 
+    Measurement, 
+    Device, 
+    Alert, 
+    AlertRule, 
+    MeasurementType, 
+    Role, 
+    UserRole
+    )
+
 from app.schemas import (
     UserResponse, 
     MeasurementCreate, 
@@ -14,7 +25,10 @@ from app.schemas import (
     SensorResponse,
     MeasurementStatsResponse,
     DeviceCreate,
-    SensorCreate
+    SensorCreate,
+    UserCreate,
+    LoginRequest,
+    TokenResponse
 )
 
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -23,9 +37,13 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Request
 from fastapi import Response
 
-from app.auth import verify_password, create_access_token
-from app.schemas import LoginRequest, TokenResponse
-from app.auth import get_current_user, is_admin
+from app.auth import (
+    verify_password, 
+    create_access_token, 
+    hash_password, 
+    get_current_user, 
+    is_admin
+    )
 
 from fastapi.staticfiles import StaticFiles
 
@@ -67,10 +85,92 @@ def check_db():
         value = result.scalar()
         return {"database": "ok", "result": value}
 
+def serialize_user(user: User):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+        "roles": [user_role.role.name for user_role in user.roles]
+    }
+
+
 @app.get("/users", response_model=list[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    users = db.query(User).all()
-    return users
+def get_users(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can view users")
+
+    users = db.query(User).order_by(User.email).all()
+    return [serialize_user(existing_user) for existing_user in users]
+
+
+@app.post("/users", response_model=UserResponse)
+def create_user(
+    payload: UserCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can create users")
+
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    role_name = payload.role.strip().lower() if payload.role else "user"
+    if role_name not in {"user", "admin"}:
+        raise HTTPException(status_code=400, detail="Role must be user or admin")
+
+    role = db.query(Role).filter(Role.name == role_name).first()
+    if not role:
+        role = Role(name=role_name)
+        db.add(role)
+        db.flush()
+
+    new_user = User(
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        is_active=payload.is_active
+    )
+    db.add(new_user)
+    db.flush()
+
+    db.add(UserRole(user_id=new_user.id, role_id=role.id))
+    db.commit()
+    db.refresh(new_user)
+
+    return serialize_user(new_user)
+
+
+@app.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can delete users")
+
+    if user.id == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+
+    user_to_delete = db.query(User).filter(User.id == user_id).first()
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db.query(Device).filter(Device.user_id == user_id).update({Device.user_id: None})
+    db.query(UserRole).filter(UserRole.user_id == user_id).delete()
+    db.delete(user_to_delete)
+    db.commit()
+
+    return {"message": "User deleted"}
 
 @app.post("/measurements", response_model=MeasurementResponse)
 def create_measurement(payload: MeasurementCreate, db: Session = Depends(get_db)):
@@ -393,6 +493,7 @@ def login_page(request: Request):
 @app.get("/me")
 def get_me(user: User = Depends(get_current_user)):
     return {
+        "id": user.id,
         "email": user.email,
         "roles": [r.role.name for r in user.roles]
     }

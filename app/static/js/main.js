@@ -552,6 +552,117 @@ async function deleteDevice() {
     }
 }
 
+function showAddUserModal() {
+    if (!isAdmin) return;
+
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("addUserModal").style.display = "block";
+}
+
+async function createUser() {
+    const token = getToken() || localStorage.getItem("token");
+    const email = document.getElementById("newUserEmail").value.trim();
+    const password = document.getElementById("newUserPassword").value;
+    const firstName = document.getElementById("newUserFirstName").value.trim();
+    const lastName = document.getElementById("newUserLastName").value.trim();
+    const role = document.getElementById("newUserRole").value;
+
+    if (!email || !password) {
+        alert("Please enter email and password");
+        return;
+    }
+
+    const res = await fetch("/users", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+            email,
+            password,
+            first_name: firstName || null,
+            last_name: lastName || null,
+            role
+        })
+    });
+
+    if (res.ok) {
+        alert("User created!");
+        closeModals();
+        return;
+    }
+
+    const err = await res.json();
+    alert("Error: " + (err.detail || "Failed to create user"));
+}
+
+async function showRemoveUserModal() {
+    if (!isAdmin) return;
+
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("removeUserModal").style.display = "block";
+
+    const token = getToken() || localStorage.getItem("token");
+    const select = document.getElementById("userToRemove");
+    select.innerHTML = "<option value=''>Loading...</option>";
+
+    const meRes = await fetch("/me", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const currentUser = meRes.ok ? await meRes.json() : null;
+
+    const res = await fetch("/users", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (!res.ok) {
+        select.innerHTML = "<option value=''>Unable to load users</option>";
+        return;
+    }
+
+    const users = await res.json();
+    select.innerHTML = '<option value="">Select User</option>';
+    users
+        .filter(user => !currentUser || user.id !== currentUser.id)
+        .forEach(user => {
+            const option = document.createElement("option");
+            option.value = user.id;
+            option.textContent = `${user.email} (${user.roles.join(", ") || "no role"})`;
+            select.appendChild(option);
+        });
+}
+
+async function deleteUser() {
+    const token = getToken() || localStorage.getItem("token");
+    const userId = document.getElementById("userToRemove").value;
+
+    if (!userId) {
+        alert("Please select a user");
+        return;
+    }
+
+    if (!confirm("Are you sure you want to remove this user?")) {
+        return;
+    }
+
+    const res = await fetch(`/users/${userId}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (res.ok) {
+        alert("User deleted!");
+        closeModals();
+        return;
+    }
+
+    const err = await res.json();
+    alert("Error: " + (err.detail || "Failed to delete user"));
+}
+
 async function showAlertsModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";

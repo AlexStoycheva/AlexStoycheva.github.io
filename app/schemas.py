@@ -21,9 +21,14 @@ class UserBase(BaseModel):
     last_name: str | None = None
     is_active: bool = True
 
+class UserCreate(UserBase):
+    password: str
+    role: str = "user"
+
 class UserResponse(UserBase):
     id: int
     created_at: datetime
+    roles: list[str] = []
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -16,6 +16,10 @@
                     <button type="button" onclick="showAddMeasurementTypeModal()">+ Add Measurement Type</button>
                     <button type="button" onclick="showRemoveSensorModal()">- Remove Sensor</button>
                     <button type="button" onclick="showRemoveDeviceModal()">- Remove Device</button>
+                    {% if is_admin %}
+                    <button type="button" onclick="showAddUserModal()">+ Add User</button>
+                    <button type="button" onclick="showRemoveUserModal()">- Remove User</button>
+                    {% endif %}
                     <button type="button" onclick="showAlertsModal()">📋 View Alerts</button>
                 </div>
             </div>
@@ -25,6 +29,7 @@
     <script>
         const devices = {{ devices | tojson }};
         const measurementTypes = {{ measurement_types | tojson }};
+        const isAdmin = {{ is_admin | tojson }};
     </script>
     <div class="chart-controls">
         <div class="form-group">
@@ -117,6 +122,54 @@
                     <input type="text" id="newMeasTypeUnit" placeholder="e.g., m/s, km/h, mm">
                 </div>
                 <button type="button" onclick="createMeasurementType()">Create</button>
+            </div>
+        </div>
+
+        <div id="addUserModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Add User</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="newUserEmail" placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="newUserPassword" placeholder="Temporary password">
+                </div>
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input type="text" id="newUserFirstName" placeholder="First name">
+                </div>
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" id="newUserLastName" placeholder="Last name">
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select id="newUserRole">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="button" onclick="createUser()">Create User</button>
+            </div>
+        </div>
+
+        <div id="removeUserModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Remove User</h3>
+                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select User to Remove</label>
+                    <select id="userToRemove"></select>
+                </div>
+                <p class="warning">Devices owned by this user will remain in the system without an assigned user.</p>
+                <button type="button" class="danger" onclick="deleteUser()">Remove User</button>
             </div>
         </div>
 
