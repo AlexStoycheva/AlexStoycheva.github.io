@@ -69,10 +69,20 @@ async function loadAllCharts() {
     Object.values(chartInstances).forEach(chart => chart.destroy());
     chartInstances = {};
     
-    const sensorsRes = await fetch("/sensors", {
-        headers: { "Authorization": "Bearer " + token }
-    });
+    const [sensorsRes, devicesRes, mtRes] = await Promise.all([
+        fetch("/sensors", { headers: { "Authorization": "Bearer " + token } }),
+        fetch("/devices", { headers: { "Authorization": "Bearer " + token } }),
+        fetch("/measurement-types")
+    ]);
+
+    if (!sensorsRes.ok || !devicesRes.ok || !mtRes.ok) {
+        container.innerHTML = "<p>Unable to load charts.</p>";
+        return;
+    }
+
     const sensors = await sensorsRes.json();
+    const devices = await devicesRes.json();
+    const measurementTypes = await mtRes.json();
     
     if (sensors.length === 0) {
         container.innerHTML = "<p>No sensors available.</p>";
@@ -81,69 +91,148 @@ async function loadAllCharts() {
     
     container.innerHTML = "";
     
-    const mtRes = await fetch("/measurement-types");
-    const measurementTypes = await mtRes.json();
     const mtMap = {};
     measurementTypes.forEach(mt => mtMap[mt.id] = mt);
-    
-    for (const sensor of sensors) {
-        const card = document.createElement("div");
-        card.className = "chart-card";
-        card.onclick = () => expandChart(sensor.id);
-        card.innerHTML = `
-            <h4>${sensor.name} - ${capitalizeFirstLetter(sensor.location)}</h4>
-            <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
-            <canvas id="chart-${sensor.id}"></canvas>
-        `;
-        container.appendChild(card);
-        
-        const res = await fetch(`/measurements/by-sensor/${sensor.id}?hours=${hours}`, {
+
+    const usersById = {};
+    if (typeof isAdmin !== "undefined" && isAdmin) {
+        const usersRes = await fetch("/users", {
             headers: { "Authorization": "Bearer " + token }
         });
-        const data = await res.json();
-        const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
-        const valueEl = document.getElementById(`value-${sensor.id}`);
-
-        if (data.length > 0) {
-            const latest = data[data.length - 1];
-            const mt = mtMap[sensor.measurement_type_id];
-            const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
-            valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${unit}</span>`;
-            valueEl.style.color = colors.border;
-        } else {
-            valueEl.innerHTML = "No data<span class='unit'></span>";
+        if (usersRes.ok) {
+            const users = await usersRes.json();
+            users.forEach(user => {
+                usersById[user.id] = user.email;
+            });
         }
-        
-        const labels = data.map(x => formatTime(x.ts));
-        const values = data.map(x => x.value);
-        
-        const ctx = document.getElementById(`chart-${sensor.id}`).getContext('2d');
-        chartInstances[sensor.id] = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: sensor.name,
-                    data: values,
-                    borderColor: colors.border,
-                    backgroundColor: colors.bg,
-                    fill: true,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
+    }
+
+    const sensorsByDevice = {};
+    sensors.forEach(sensor => {
+        if (!sensorsByDevice[sensor.device_id]) {
+            sensorsByDevice[sensor.device_id] = [];
+        }
+        sensorsByDevice[sensor.device_id].push(sensor);
+    });
+
+    const deviceMap = {};
+    devices.forEach(device => {
+        deviceMap[device.id] = device;
+    });
+
+    const orderedDevices = devices
+        .filter(device => sensorsByDevice[device.id]?.length)
+        .sort((a, b) => {
+            const ownerA = usersById[a.user_id] || "";
+            const ownerB = usersById[b.user_id] || "";
+            return ownerA.localeCompare(ownerB) || a.name.localeCompare(b.name);
+        });
+
+    const unknownDeviceIds = new Set();
+    for (const sensor of sensors.filter(sensor => !deviceMap[sensor.device_id])) {
+        if (unknownDeviceIds.has(sensor.device_id)) continue;
+        unknownDeviceIds.add(sensor.device_id);
+
+        if (!sensorsByDevice[sensor.device_id]) {
+            sensorsByDevice[sensor.device_id] = [];
+        }
+        orderedDevices.push({
+            id: sensor.device_id,
+            name: "Unknown Device",
+            user_id: null,
+            location_name: ""
+        });
+    }
+
+    let lastOwnerLabel = null;
+
+    for (const device of orderedDevices) {
+        const deviceSensors = (sensorsByDevice[device.id] || [])
+            .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+        if (deviceSensors.length === 0) continue;
+
+        const ownerLabel = usersById[device.user_id] || (device.user_id ? `User #${device.user_id}` : "Unassigned");
+        if (typeof isAdmin !== "undefined" && isAdmin && ownerLabel !== lastOwnerLabel) {
+            const ownerHeading = document.createElement("h2");
+            ownerHeading.className = "chart-owner-heading";
+            ownerHeading.textContent = ownerLabel;
+            container.appendChild(ownerHeading);
+            lastOwnerLabel = ownerLabel;
+        }
+
+        const section = document.createElement("section");
+        section.className = "device-chart-section";
+        section.innerHTML = `
+            <div class="device-chart-heading">
+                <h3>${escapeHtml(device.name)}</h3>
+                <span>${escapeHtml(device.location_name || "no location")}</span>
+            </div>
+            <div class="device-chart-grid"></div>
+        `;
+        container.appendChild(section);
+
+        const grid = section.querySelector(".device-chart-grid");
+
+        for (const sensor of deviceSensors) {
+            const card = document.createElement("div");
+            card.className = "chart-card";
+            card.onclick = () => expandChart(sensor.id);
+            card.innerHTML = `
+                <h4>${escapeHtml(sensor.name)} - ${escapeHtml(capitalizeFirstLetter(sensor.location || "unknown"))}</h4>
+                <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
+                <canvas id="chart-${sensor.id}"></canvas>
+            `;
+            grid.appendChild(card);
+            
+            const res = await fetch(`/measurements/by-sensor/${sensor.id}?hours=${hours}`, {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            const data = res.ok ? await res.json() : [];
+            const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
+            const valueEl = document.getElementById(`value-${sensor.id}`);
+
+            if (data.length > 0) {
+                const latest = data[data.length - 1];
+                const mt = mtMap[sensor.measurement_type_id];
+                const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
+                valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${unit}</span>`;
+                valueEl.style.color = colors.border;
+            } else {
+                valueEl.innerHTML = "No data<span class='unit'></span>";
+            }
+            
+            const labels = data.map(x => formatTime(x.ts));
+            const values = data.map(x => x.value);
+            
+            const ctx = document.getElementById(`chart-${sensor.id}`).getContext('2d');
+            chartInstances[sensor.id] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: sensor.name,
+                        data: values,
+                        borderColor: colors.border,
+                        backgroundColor: colors.bg,
+                        fill: true,
+                        tension: 0.3
+                    }]
                 },
-                scales: {
-                    x: { 
-                        ticks: { maxTicksLimit: 8 }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { 
+                            ticks: { maxTicksLimit: 8 }
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     }
 }
 
