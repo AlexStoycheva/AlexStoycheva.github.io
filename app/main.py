@@ -2,8 +2,11 @@ from fastapi import FastAPI, Depends, HTTPException, Body
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+from email.message import EmailMessage
+import smtplib
 
 from app.db import engine
+from app.config import SMTP_FROM, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_USERNAME, SMTP_USE_TLS
 from app.dependencies import get_db
 from app.models import (
     User, 
@@ -11,6 +14,7 @@ from app.models import (
     Measurement, 
     Device, 
     Alert, 
+    AlertEvent,
     AlertRule, 
     MeasurementType, 
     Role, 
@@ -225,37 +229,55 @@ def delete_user(
 
     return {"message": "User deleted"}
 
-@app.post("/measurements", response_model=MeasurementResponse)
-def create_measurement(payload: MeasurementCreate, db: Session = Depends(get_db)):
-    sensor = db.query(Sensor).filter(Sensor.id == payload.sensor_id).first()
-    if not sensor:
-        raise HTTPException(status_code=404, detail="Sensor not found")
 
-    measurement = Measurement(
-        sensor_id=payload.sensor_id, 
-        ts=payload.ts, 
-        value=payload.value
-    )
-    db.add(measurement)
-    db.commit()
-    db.refresh(measurement)
+def send_alert_email(recipient: str, subject: str, body: str):
+    if not SMTP_HOST or not SMTP_FROM:
+        print("Alert email skipped: SMTP_HOST/SMTP_FROM are not configured")
+        return
 
+    message = EmailMessage()
+    message["From"] = SMTP_FROM
+    message["To"] = recipient
+    message["Subject"] = subject
+    message.set_content(body)
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as smtp:
+            if SMTP_USE_TLS:
+                smtp.starttls()
+            if SMTP_USERNAME and SMTP_PASSWORD:
+                smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+            smtp.send_message(message)
+    except Exception as exc:
+        print(f"Alert email failed for {recipient}: {exc}")
+
+
+def evaluate_alert_rules_for_measurement(
+    db: Session,
+    sensor_id: int,
+    value: float,
+    measurement: Measurement
+):
     rules = (
         db.query(AlertRule)
         .filter(
-            AlertRule.sensor_id == payload.sensor_id,
+            AlertRule.sensor_id == sensor_id,
             AlertRule.is_active == True
         )
         .all()
     )
 
+    sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
+    device = db.query(Device).filter(Device.id == sensor.device_id).first() if sensor else None
+    owner = db.query(User).filter(User.id == device.user_id).first() if device and device.user_id else None
+
     for rule in rules:
         triggered = False
 
-        if rule.min_value is not None and payload.value < rule.min_value:
+        if rule.min_value is not None and value < rule.min_value:
             triggered = True
 
-        if rule.max_value is not None and payload.value > rule.max_value:
+        if rule.max_value is not None and value > rule.max_value:
             triggered = True
 
         active_alert = (
@@ -272,18 +294,60 @@ def create_measurement(payload: MeasurementCreate, db: Session = Depends(get_db)
                 alert = Alert(
                     alert_rule_id=rule.id,
                     measurement_id=measurement.id,
-                    message=f"Threshold exceeded: {payload.value}",
+                    message=f"Threshold exceeded: {value}",
                     severity="high",
                     status="active"
                 )
                 db.add(alert)
-                db.commit()
+                db.flush()
+                db.add(AlertEvent(
+                    alert_id=alert.id,
+                    measurement_id=measurement.id
+                ))
+
+                if owner and owner.email:
+                    sensor_name = sensor.name if sensor else f"Sensor #{sensor_id}"
+                    device_name = device.name if device else "Unknown device"
+                    subject = f"Meteo alert: {sensor_name}"
+                    body = (
+                        f"Hello {owner.first_name or owner.email},\n\n"
+                        f"An alert was triggered for {sensor_name} on {device_name}.\n"
+                        f"Current value: {value}\n"
+                        f"Minimum threshold: {rule.min_value if rule.min_value is not None else 'not set'}\n"
+                        f"Maximum threshold: {rule.max_value if rule.max_value is not None else 'not set'}\n"
+                        f"Time: {measurement.ts}\n\n"
+                        "This email was sent by the Meteo Monitoring system."
+                    )
+                    send_alert_email(owner.email, subject, body)
 
         else:
             if active_alert:
                 active_alert.status = "resolved"
                 active_alert.resolved_at = datetime.utcnow()
-                db.commit()
+
+
+@app.post("/measurements", response_model=MeasurementResponse)
+def create_measurement(payload: MeasurementCreate, db: Session = Depends(get_db)):
+    sensor = db.query(Sensor).filter(Sensor.id == payload.sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+
+    measurement = Measurement(
+        sensor_id=payload.sensor_id, 
+        ts=payload.ts, 
+        value=payload.value
+    )
+    db.add(measurement)
+    db.commit()
+    db.refresh(measurement)
+
+    evaluate_alert_rules_for_measurement(
+        db=db,
+        sensor_id=payload.sensor_id,
+        value=payload.value,
+        measurement=measurement
+    )
+    db.commit()
     
     return measurement
 
@@ -803,6 +867,55 @@ def get_alert_rules(
     ]
 
 
+@app.get("/alert-history")
+def get_alert_history(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    alerts = db.query(Alert).order_by(Alert.created_at.desc()).all()
+    history = []
+
+    for alert in alerts:
+        rule = db.query(AlertRule).filter(AlertRule.id == alert.alert_rule_id).first()
+        if not rule:
+            continue
+
+        sensor = db.query(Sensor).filter(Sensor.id == rule.sensor_id).first()
+        if not sensor:
+            continue
+
+        device = db.query(Device).filter(Device.id == sensor.device_id).first()
+        if not device:
+            continue
+
+        if not is_admin(user) and device.user_id != user.id:
+            continue
+
+        owner = db.query(User).filter(User.id == device.user_id).first() if device.user_id else None
+        measurement = db.query(Measurement).filter(Measurement.id == alert.measurement_id).first()
+
+        history.append({
+            "id": alert.id,
+            "status": alert.status,
+            "severity": alert.severity,
+            "message": alert.message,
+            "created_at": alert.created_at.isoformat() if alert.created_at else None,
+            "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None,
+            "sensor_id": sensor.id,
+            "sensor_name": sensor.name,
+            "device_id": device.id,
+            "device_name": device.name,
+            "user_id": owner.id if owner else None,
+            "user_email": owner.email if owner else None,
+            "min_value": rule.min_value,
+            "max_value": rule.max_value,
+            "measurement_value": float(measurement.value) if measurement else None,
+            "measurement_ts": measurement.ts.isoformat() if measurement and measurement.ts else None
+        })
+
+    return history
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard_page(request: Request):
     """Dashboard page - requires authentication via cookie or header."""
@@ -939,6 +1052,13 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
                     value=converted_value
                 )
                 db.add(measurement)
+                db.flush()
+                evaluate_alert_rules_for_measurement(
+                    db=db,
+                    sensor_id=sensor_id,
+                    value=converted_value,
+                    measurement=measurement
+                )
             except (ValueError, TypeError) as ve:
                 print(f"Skipping {ecowitt_field}: invalid value {value} - {ve}")
 

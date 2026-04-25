@@ -1241,8 +1241,10 @@ async function showAlertsModal() {
     
     const token = getToken() || localStorage.getItem("token");
     const container = document.getElementById("alertsList");
+    const historyContainer = document.getElementById("alertHistoryList");
     const sensorSelect = document.getElementById("newAlertSensor");
     container.innerHTML = "Loading...";
+    historyContainer.innerHTML = "Loading...";
     
     const sensorsRes = await fetch("/sensors", {
         headers: { "Authorization": "Bearer " + token }
@@ -1262,6 +1264,7 @@ async function showAlertsModal() {
     
     if (userRules.length === 0) {
         container.innerHTML = "<p>No alerts found.</p>";
+        await loadAlertHistory();
         return;
     }
     
@@ -1286,6 +1289,68 @@ async function showAlertsModal() {
             </div>
         </div>
     `).join("");
+
+    await loadAlertHistory();
+}
+
+function formatDateTime(ts) {
+    if (!ts) return "-";
+    const date = new Date(ts);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+async function loadAlertHistory() {
+    const token = getToken() || localStorage.getItem("token");
+    const container = document.getElementById("alertHistoryList");
+
+    const res = await fetch("/alert-history", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (!res.ok) {
+        container.innerHTML = "<p>Unable to load alert history.</p>";
+        return;
+    }
+
+    const history = await res.json();
+    if (history.length === 0) {
+        container.innerHTML = "<p>No triggered alerts yet.</p>";
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="manage-table alert-history-table">
+            <thead>
+                <tr>
+                    ${isAdmin ? "<th>User</th>" : ""}
+                    <th>Device</th>
+                    <th>Sensor</th>
+                    <th>Value</th>
+                    <th>Threshold</th>
+                    <th>Status</th>
+                    <th>Triggered</th>
+                    <th>Resolved</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${history.map(item => `
+                    <tr>
+                        ${isAdmin ? `<td>${escapeHtml(item.user_email || "Unassigned")}</td>` : ""}
+                        <td>${escapeHtml(item.device_name || "-")}</td>
+                        <td>${escapeHtml(item.sensor_name || "-")}</td>
+                        <td>${item.measurement_value ?? "-"}</td>
+                        <td>
+                            ${item.min_value !== null ? `Min ${item.min_value}` : ""}
+                            ${item.max_value !== null ? `Max ${item.max_value}` : ""}
+                        </td>
+                        <td>${escapeHtml(item.status || "-")}</td>
+                        <td>${formatDateTime(item.created_at)}</td>
+                        <td>${formatDateTime(item.resolved_at)}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    `;
 }
 
 async function createAlertFromModal() {
@@ -1342,9 +1407,6 @@ async function editAlert(ruleId, sensorId, minValue, maxValue, isActive) {
     const alertType = maxValue !== 'null' ? 'max' : 'min';
     const currentValue = maxValue !== 'null' ? maxValue : minValue;
     
-    const newSensorId = prompt("Sensor ID:", sensorId);
-    if (newSensorId === null) return;
-    
     const newAlertType = prompt("Alert type (max/min):", alertType);
     if (newAlertType === null) return;
     
@@ -1352,7 +1414,7 @@ async function editAlert(ruleId, sensorId, minValue, maxValue, isActive) {
     if (newValue === null) return;
     
     const payload = {
-        sensor_id: parseInt(newSensorId),
+        sensor_id: parseInt(sensorId),
         min_value: newAlertType === "min" ? parseFloat(newValue) : null,
         max_value: newAlertType === "max" ? parseFloat(newValue) : null
     };

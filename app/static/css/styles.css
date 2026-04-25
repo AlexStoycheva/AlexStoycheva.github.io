@@ -282,6 +282,15 @@ body {
     overflow-y: auto;
 }
 
+#alertHistoryList {
+    max-height: 320px;
+    overflow: auto;
+}
+
+.alert-history-table {
+    min-width: 760px;
+}
+
 .alert-item {
     padding: 12px;
     border: 1px solid #ddd;
