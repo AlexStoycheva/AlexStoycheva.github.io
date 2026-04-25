@@ -13,7 +13,8 @@ from app.schemas import (
     DeviceResponse,
     SensorResponse,
     MeasurementStatsResponse,
-    DeviceCreate
+    DeviceCreate,
+    SensorCreate
 )
 
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -262,35 +263,35 @@ def delete_device(
 
 @app.post("/sensors")
 def create_sensor(
-    device_id: int,
-    measurement_type_id: int,
-    name: str,
-    location: str = None,
+    sensor: SensorCreate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    
-    device = db.query(Device).filter(Device.id == device_id).first()
+    print(f"Creating sensor: {sensor}")
+
+    device = db.query(Device).filter(Device.id == sensor.device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to add sensor to this device")
     
-    mt = db.query(MeasurementType).filter(MeasurementType.id == measurement_type_id).first()
+    mt = db.query(MeasurementType).filter(MeasurementType.id == sensor.measurement_type_id).first()
     if not mt:
         raise HTTPException(status_code=404, detail="Measurement type not found")
     
-    sensor = Sensor(
-        device_id=device_id,
-        measurement_type_id=measurement_type_id,
-        name=name,
-        location=location
+    new_sensor = Sensor(
+        device_id=sensor.device_id,
+        measurement_type_id=sensor.measurement_type_id,
+        name=sensor.name,
+        location=sensor.location
     )
-    db.add(sensor)
+
+    db.add(new_sensor)
     db.commit()
-    db.refresh(sensor)
-    return {"id": sensor.id, "name": sensor.name, "message": "Sensor created"}
+    db.refresh(new_sensor)
+
+    return {"id": new_sensor.id, "name": new_sensor.name, "message": "Sensor created"}
 
 
 @app.delete("/sensors/{sensor_id}")

@@ -107,7 +107,8 @@ async function loadAllCharts() {
         if (data.length > 0) {
             const latest = data[data.length - 1];
             const mt = mtMap[sensor.measurement_type_id];
-            const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
+            const unit = m
+            t ? UNIT_MAP[mt.unit] || mt.unit : '';
             valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${unit}</span>`;
             valueEl.style.color = colors.border;
         } else {
@@ -364,7 +365,7 @@ async function createDevice() {
     
     const checkboxes = document.querySelectorAll("#sensorCheckboxes input:checked");
     const selectedTypes = Array.from(checkboxes).map(cb => parseInt(cb.value));
-    
+
     if (!name) {
         alert("Please enter a device name");
         return;

@@ -3,6 +3,12 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional
 
 
+class SensorCreate(BaseModel):
+    device_id: int
+    measurement_type_id: int
+    name: str
+    location: Optional[str] = None
+
 class DeviceCreate(BaseModel):
     name: str
     passkey: str
