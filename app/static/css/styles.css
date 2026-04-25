@@ -255,6 +255,28 @@ body {
     margin: 10px 0;
 }
 
+.checkbox-list {
+    display: grid;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.checkbox-list label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #f8fafb;
+    border: 1px solid #edf0f2;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.checkbox-list input {
+    width: auto;
+    margin: 0;
+}
+
 #alertsList {
     max-height: 300px;
     overflow-y: auto;
@@ -434,6 +456,15 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
     gap: 20px;
+}
+
+.empty-device-message {
+    margin: 0;
+    padding: 16px;
+    background: white;
+    border: 1px dashed #cfd8df;
+    border-radius: 8px;
+    color: #666;
 }
 
 .chart-card {

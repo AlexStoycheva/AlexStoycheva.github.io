@@ -84,8 +84,8 @@ async function loadAllCharts() {
     const devices = await devicesRes.json();
     const measurementTypes = await mtRes.json();
     
-    if (sensors.length === 0) {
-        container.innerHTML = "<p>No sensors available.</p>";
+    if (devices.length === 0) {
+        container.innerHTML = "<p>No devices available.</p>";
         return;
     }
     
@@ -102,7 +102,7 @@ async function loadAllCharts() {
         if (usersRes.ok) {
             const users = await usersRes.json();
             users.forEach(user => {
-                usersById[user.id] = user.first_name + ' ' + user.last_name;
+                usersById[user.id] = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
             });
         }
     }
@@ -121,7 +121,6 @@ async function loadAllCharts() {
     });
 
     const orderedDevices = devices
-        .filter(device => sensorsByDevice[device.id]?.length)
         .sort((a, b) => {
             const ownerA = usersById[a.user_id] || "";
             const ownerB = usersById[b.user_id] || "";
@@ -151,8 +150,6 @@ async function loadAllCharts() {
         const deviceSensors = (sensorsByDevice[device.id] || [])
             .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-        if (deviceSensors.length === 0) continue;
-
         const ownerLabel = usersById[device.user_id] || (device.user_id ? `User #${device.user_id}` : "Unassigned");
         if (typeof isAdmin !== "undefined" && isAdmin && ownerLabel !== lastOwnerLabel) {
             currentOwnerPanel = document.createElement("section");
@@ -178,6 +175,11 @@ async function loadAllCharts() {
         (currentOwnerPanel || container).appendChild(section);
 
         const grid = section.querySelector(".device-chart-grid");
+
+        if (deviceSensors.length === 0) {
+            grid.innerHTML = '<p class="empty-device-message">No sensors configured for this device.</p>';
+            continue;
+        }
 
         for (const sensor of deviceSensors) {
             const card = document.createElement("div");
@@ -607,6 +609,25 @@ async function showAddDeviceModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
     document.getElementById("addDeviceModal").style.display = "block";
+
+    const container = document.getElementById("deviceSensorCheckboxes");
+    container.innerHTML = "Loading...";
+
+    const typeList = await fetchMeasurementTypes();
+    if (typeList.length === 0) {
+        container.innerHTML = "<p>No measurement types available.</p>";
+        return;
+    }
+
+    container.innerHTML = "";
+    typeList.forEach(mt => {
+        const label = document.createElement("label");
+        label.innerHTML = `
+            <input type="checkbox" value="${mt.id}" data-name="${escapeHtml(mt.name)}">
+            <span>${escapeHtml(mt.name)} (${escapeHtml(mt.unit)})</span>
+        `;
+        container.appendChild(label);
+    });
 }
 
 async function createDevice() {
@@ -646,7 +667,38 @@ async function createDevice() {
         return;
     }
 
-    alert("Device created!");
+    const device = await deviceRes.json();
+    const selectedTypes = Array.from(document.querySelectorAll("#deviceSensorCheckboxes input:checked"))
+        .map(input => ({
+            id: parseInt(input.value),
+            name: input.dataset.name
+        }));
+
+    for (const measurementType of selectedTypes) {
+        const sensorRes = await fetch("/sensors", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({
+                device_id: device.id,
+                measurement_type_id: measurementType.id,
+                name: `${name} - ${measurementType.name}`,
+                location: location || null
+            })
+        });
+
+        if (!sensorRes.ok) {
+            const err = await sensorRes.json();
+            alert("Device created, but one sensor could not be created: " + (err.detail || "Unknown error"));
+            refreshChartsIfVisible();
+            showManageDevicesModal();
+            return;
+        }
+    }
+
+    alert(selectedTypes.length ? "Device and sensors created!" : "Device created!");
     refreshChartsIfVisible();
     showManageDevicesModal();
 }
