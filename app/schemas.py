@@ -9,11 +9,32 @@ class SensorCreate(BaseModel):
     name: str
     location: Optional[str] = None
 
+class SensorUpdate(BaseModel):
+    device_id: Optional[int] = None
+    measurement_type_id: Optional[int] = None
+    name: Optional[str] = None
+    location: Optional[str] = None
+
 class DeviceCreate(BaseModel):
     name: str
     passkey: str
     serial_number: Optional[str] = None
     location_name: Optional[str] = None
+
+class DeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    passkey: Optional[str] = None
+    serial_number: Optional[str] = None
+    location_name: Optional[str] = None
+    status: Optional[str] = None
+
+class MeasurementTypeCreate(BaseModel):
+    name: str
+    unit: str
+
+class MeasurementTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    unit: Optional[str] = None
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -24,6 +45,14 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     role: str = "user"
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
 
 class UserResponse(UserBase):
     id: int

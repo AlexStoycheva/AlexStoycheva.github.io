@@ -12,13 +12,11 @@
             <div class="dropdown">
                 <button type="button" class="menu-btn">⚙️ Manage</button>
                 <div class="dropdown-content">
-                    <button type="button" onclick="showAddDeviceModal()">+ Add Device</button>
-                    <button type="button" onclick="showAddMeasurementTypeModal()">+ Add Measurement Type</button>
-                    <button type="button" onclick="showRemoveSensorModal()">- Remove Sensor</button>
-                    <button type="button" onclick="showRemoveDeviceModal()">- Remove Device</button>
+                    <button type="button" onclick="showManageDevicesModal()">Manage Devices</button>
+                    <button type="button" onclick="showManageSensorsModal()">Manage Sensors</button>
                     {% if is_admin %}
-                    <button type="button" onclick="showAddUserModal()">+ Add User</button>
-                    <button type="button" onclick="showRemoveUserModal()">- Remove User</button>
+                    <button type="button" onclick="showManageMeasurementTypesModal()">Manage Measurement Types</button>
+                    <button type="button" onclick="showManageUsersModal()">Manage Users</button>
                     {% endif %}
                     <button type="button" onclick="showAlertsModal()">📋 View Alerts</button>
                 </div>
@@ -70,40 +68,62 @@
                         <option value="outdoor">outdoor</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Sensors (select measurement types)</label>
-                    <div id="sensorCheckboxes"></div>
-                </div>
                 <button type="button" onclick="createDevice()">Create Device</button>
             </div>
         </div>
 
-        <div id="removeSensorModal" class="modal" style="display:none;">
+        <div id="manageDevicesModal" class="modal wide-modal" style="display:none;">
             <div class="modal-header">
-                <h3>Remove Sensor</h3>
-                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+                <h3>Devices</h3>
+                <div class="modal-header-actions">
+                    <button type="button" class="add-inline-btn" onclick="showAddDeviceModal()">Add +</button>
+                    <button type="button" class="close-modal" onclick="closeModals()">×</button>
+                </div>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label>Select Sensor to Remove</label>
-                    <select id="sensorToRemove"></select>
-                </div>
-                <button type="button" class="danger" onclick="deleteSensor()">Remove Sensor</button>
+                <div id="devicesList"></div>
             </div>
         </div>
 
-        <div id="removeDeviceModal" class="modal" style="display:none;">
+        <div id="manageSensorsModal" class="modal wide-modal" style="display:none;">
             <div class="modal-header">
-                <h3>Remove Device</h3>
+                <h3>Sensors</h3>
+                <div class="modal-header-actions">
+                    <button type="button" class="add-inline-btn" onclick="showAddSensorModal()">Add +</button>
+                    <button type="button" class="close-modal" onclick="closeModals()">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="sensorsList"></div>
+            </div>
+        </div>
+
+        <div id="addSensorModal" class="modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Add Sensor</h3>
                 <button type="button" class="close-modal" onclick="closeModals()">×</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>Select Device to Remove</label>
-                    <select id="deviceToRemove"></select>
+                    <label>Device</label>
+                    <select id="newSensorDevice"></select>
                 </div>
-                <p class="warning">Warning: This will also delete all sensors for this device!</p>
-                <button type="button" class="danger" onclick="deleteDevice()">Remove Device</button>
+                <div class="form-group">
+                    <label>Measurement Type</label>
+                    <select id="newSensorMeasurementType"></select>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="newSensorName" placeholder="Sensor name">
+                </div>
+                <div class="form-group">
+                    <label>Location</label>
+                    <select id="newSensorLocation">
+                        <option value="indoor">indoor</option>
+                        <option value="outdoor">outdoor</option>
+                    </select>
+                </div>
+                <button type="button" onclick="createSensor()">Create Sensor</button>
             </div>
         </div>
 
@@ -122,6 +142,19 @@
                     <input type="text" id="newMeasTypeUnit" placeholder="e.g., m/s, km/h, mm">
                 </div>
                 <button type="button" onclick="createMeasurementType()">Create</button>
+            </div>
+        </div>
+
+        <div id="manageMeasurementTypesModal" class="modal wide-modal" style="display:none;">
+            <div class="modal-header">
+                <h3>Measurement Types</h3>
+                <div class="modal-header-actions">
+                    <button type="button" class="add-inline-btn" onclick="showAddMeasurementTypeModal()">Add +</button>
+                    <button type="button" class="close-modal" onclick="closeModals()">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="measurementTypesList"></div>
             </div>
         </div>
 
@@ -158,18 +191,16 @@
             </div>
         </div>
 
-        <div id="removeUserModal" class="modal" style="display:none;">
+        <div id="manageUsersModal" class="modal wide-modal" style="display:none;">
             <div class="modal-header">
-                <h3>Remove User</h3>
-                <button type="button" class="close-modal" onclick="closeModals()">×</button>
+                <h3>Users</h3>
+                <div class="modal-header-actions">
+                    <button type="button" class="add-inline-btn" onclick="showAddUserModal()">Add +</button>
+                    <button type="button" class="close-modal" onclick="closeModals()">×</button>
+                </div>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label>Select User to Remove</label>
-                    <select id="userToRemove"></select>
-                </div>
-                <p class="warning">Devices owned by this user will remain in the system without an assigned user.</p>
-                <button type="button" class="danger" onclick="deleteUser()">Remove User</button>
+                <div id="usersList"></div>
             </div>
         </div>
 

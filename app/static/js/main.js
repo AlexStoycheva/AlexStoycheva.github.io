@@ -337,21 +337,182 @@ function closeModals() {
     document.querySelectorAll(".modal").forEach(m => m.style.display = "none");
 }
 
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+async function loadDevicesForSelect(selectId, selectedId = "") {
+    const token = getToken() || localStorage.getItem("token");
+    const select = document.getElementById(selectId);
+    const res = await fetch("/devices", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const deviceList = await res.json();
+
+    select.innerHTML = '<option value="">Select Device</option>';
+    deviceList.forEach(device => {
+        const option = document.createElement("option");
+        option.value = device.id;
+        option.textContent = `${device.name} (${device.location_name || "no location"})`;
+        option.selected = String(device.id) === String(selectedId);
+        select.appendChild(option);
+    });
+
+    return deviceList;
+}
+
+async function fetchMeasurementTypes() {
+    const res = await fetch("/measurement-types");
+    if (!res.ok) {
+        return [];
+    }
+    return await res.json();
+}
+
+async function loadMeasurementTypesForSelect(selectId, selectedId = "") {
+    const select = document.getElementById(selectId);
+    select.innerHTML = '<option value="">Select Measurement Type</option>';
+
+    const typeList = await fetchMeasurementTypes();
+
+    typeList.forEach(mt => {
+        const option = document.createElement("option");
+        option.value = mt.id;
+        option.textContent = `${mt.name} (${mt.unit})`;
+        option.selected = String(mt.id) === String(selectedId);
+        select.appendChild(option);
+    });
+}
+
+function refreshChartsIfVisible() {
+    if (document.getElementById("chartsContainer")) {
+        loadAllCharts();
+    }
+}
+
+async function showManageDevicesModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("manageDevicesModal").style.display = "block";
+
+    const token = getToken() || localStorage.getItem("token");
+    const container = document.getElementById("devicesList");
+    container.innerHTML = "Loading...";
+
+    const res = await fetch("/devices", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (!res.ok) {
+        container.innerHTML = "<p>Unable to load devices.</p>";
+        return;
+    }
+
+    const deviceList = await res.json();
+    if (deviceList.length === 0) {
+        container.innerHTML = "<p>No devices found.</p>";
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="manage-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Serial</th>
+                    <th>Location</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${deviceList.map(device => `
+                    <tr>
+                        <td>${escapeHtml(device.name)}</td>
+                        <td>${escapeHtml(device.serial_number || "-")}</td>
+                        <td>${escapeHtml(device.location_name || "-")}</td>
+                        <td>${escapeHtml(device.status || "-")}</td>
+                        <td class="row-actions">
+                            <button type="button" onclick="editDevice(${device.id})">Edit</button>
+                            <button type="button" class="danger-small" onclick="deleteDevice(${device.id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    `;
+}
+
+async function showManageSensorsModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("manageSensorsModal").style.display = "block";
+
+    const token = getToken() || localStorage.getItem("token");
+    const container = document.getElementById("sensorsList");
+    container.innerHTML = "Loading...";
+
+    const [sensorsRes, devicesRes] = await Promise.all([
+        fetch("/sensors", { headers: { "Authorization": "Bearer " + token } }),
+        fetch("/devices", { headers: { "Authorization": "Bearer " + token } })
+    ]);
+
+    if (!sensorsRes.ok || !devicesRes.ok) {
+        container.innerHTML = "<p>Unable to load sensors.</p>";
+        return;
+    }
+
+    const sensors = await sensorsRes.json();
+    const deviceList = await devicesRes.json();
+    const typeList = await fetchMeasurementTypes();
+    const deviceMap = {};
+    const measurementTypeMap = {};
+    deviceList.forEach(device => deviceMap[device.id] = device.name);
+    typeList.forEach(mt => measurementTypeMap[mt.id] = `${mt.name} (${mt.unit})`);
+
+    if (sensors.length === 0) {
+        container.innerHTML = "<p>No sensors found.</p>";
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="manage-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Device</th>
+                    <th>Type</th>
+                    <th>Location</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${sensors.map(sensor => `
+                    <tr>
+                        <td>${escapeHtml(sensor.name || "-")}</td>
+                        <td>${escapeHtml(deviceMap[sensor.device_id] || "Unknown")}</td>
+                        <td>${escapeHtml(measurementTypeMap[sensor.measurement_type_id] || "Unknown")}</td>
+                        <td>${escapeHtml(sensor.location || "-")}</td>
+                        <td class="row-actions">
+                            <button type="button" onclick="editSensor(${sensor.id})">Edit</button>
+                            <button type="button" class="danger-small" onclick="deleteSensor(${sensor.id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    `;
+}
+
 async function showAddDeviceModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
     document.getElementById("addDeviceModal").style.display = "block";
-    
-    const container = document.getElementById("sensorCheckboxes");
-    container.innerHTML = "";
-    
-    if (typeof measurementTypes !== 'undefined') {
-        measurementTypes.forEach(mt => {
-            const label = document.createElement("label");
-            label.innerHTML = `<input type="checkbox" value="${mt.id}"> ${mt.name} (${mt.unit})`;
-            container.appendChild(label);
-        });
-    }
 }
 
 async function createDevice() {
@@ -362,15 +523,12 @@ async function createDevice() {
     const passkey = document.getElementById("newDevicePasskey").value;
     const location = document.getElementById("newDeviceLocation").value;
     
-    const checkboxes = document.querySelectorAll("#sensorCheckboxes input:checked");
-    const selectedTypes = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
     if (!name) {
         alert("Please enter a device name");
         return;
     }
-    if (selectedTypes.length === 0) {
-        alert("Please select at least one sensor type");
+    if (!passkey) {
+        alert("Please enter a pass key");
         return;
     }
     
@@ -394,34 +552,100 @@ async function createDevice() {
         return;
     }
 
-    const device = await deviceRes.json();
-    
-    for (const measTypeId of selectedTypes) {
-        const measType = measurementTypes.find(mt => mt.id === measTypeId);
-        await fetch("/sensors", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + token
-            },
-            body: JSON.stringify({
-                device_id: device.id,
-                measurement_type_id: measTypeId,
-                name: `${name} - ${measType.name}`,
-                location: location || "unknown"
-            })
-        });
+    alert("Device created!");
+    refreshChartsIfVisible();
+    showManageDevicesModal();
+}
+
+async function editDevice(deviceId) {
+    const token = getToken() || localStorage.getItem("token");
+    const res = await fetch("/devices", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+    const deviceList = await res.json();
+    const device = deviceList.find(d => d.id === deviceId);
+    if (!device) return;
+
+    const name = prompt("Device name:", device.name || "");
+    if (name === null) return;
+    if (!name.trim()) {
+        alert("Device name cannot be empty");
+        return;
     }
-    
-    alert("Device and sensors created successfully!");
-    closeModals();
-    window.location.reload();
+    const serial = prompt("Serial number:", device.serial_number || "");
+    if (serial === null) return;
+    const location = prompt("Location:", device.location_name || "");
+    if (location === null) return;
+    const status = prompt("Status:", device.status || "active");
+    if (status === null) return;
+
+    const updateRes = await fetch(`/devices/${deviceId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+            name,
+            serial_number: serial || null,
+            location_name: location || null,
+            status: status || null
+        })
+    });
+
+    if (!updateRes.ok) {
+        const err = await updateRes.json();
+        alert("Error: " + (err.detail || "Failed to update device"));
+        return;
+    }
+
+    refreshChartsIfVisible();
+    showManageDevicesModal();
 }
 
 function showAddMeasurementTypeModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
     document.getElementById("addMeasurementTypeModal").style.display = "block";
+}
+
+async function showManageMeasurementTypesModal() {
+    closeModals();
+    document.getElementById("modalOverlay").style.display = "flex";
+    document.getElementById("manageMeasurementTypesModal").style.display = "block";
+
+    const container = document.getElementById("measurementTypesList");
+    container.innerHTML = "Loading...";
+
+    const typeList = await fetchMeasurementTypes();
+    if (typeList.length === 0) {
+        container.innerHTML = "<p>No measurement types found.</p>";
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="manage-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Unit</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${typeList.map(mt => `
+                    <tr>
+                        <td>${escapeHtml(mt.name)}</td>
+                        <td>${escapeHtml(mt.unit)}</td>
+                        <td class="row-actions">
+                            <button type="button" onclick="editMeasurementType(${mt.id})">Edit</button>
+                            <button type="button" class="danger-small" onclick="deleteMeasurementType(${mt.id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    `;
 }
 
 async function createMeasurementType() {
@@ -446,46 +670,179 @@ async function createMeasurementType() {
     
     if (res.ok) {
         alert("Measurement type created!");
-        closeModals();
-        location.reload();
+        refreshChartsIfVisible();
+        showManageMeasurementTypesModal();
     } else {
         const err = await res.json();
         alert("Error: " + (err.detail || "Failed to create measurement type"));
     }
 }
 
-async function showRemoveSensorModal() {
+async function editMeasurementType(typeId) {
+    const token = getToken() || localStorage.getItem("token");
+    const typeList = await fetchMeasurementTypes();
+    const measurementType = typeList.find(mt => mt.id === typeId);
+    if (!measurementType) return;
+
+    const name = prompt("Name:", measurementType.name || "");
+    if (name === null) return;
+    if (!name.trim()) {
+        alert("Name cannot be empty");
+        return;
+    }
+
+    const unit = prompt("Unit:", measurementType.unit || "");
+    if (unit === null) return;
+    if (!unit.trim()) {
+        alert("Unit cannot be empty");
+        return;
+    }
+
+    const res = await fetch(`/measurement-types/${typeId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+            name: name.trim(),
+            unit: unit.trim()
+        })
+    });
+
+    if (!res.ok) {
+        const err = await res.json();
+        alert("Error: " + (err.detail || "Failed to update measurement type"));
+        return;
+    }
+
+    refreshChartsIfVisible();
+    showManageMeasurementTypesModal();
+}
+
+async function deleteMeasurementType(typeId) {
+    const token = getToken() || localStorage.getItem("token");
+
+    if (!confirm("Are you sure you want to delete this measurement type?")) {
+        return;
+    }
+
+    const res = await fetch(`/measurement-types/${typeId}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (!res.ok) {
+        const err = await res.json();
+        alert("Error: " + (err.detail || "Failed to delete measurement type"));
+        return;
+    }
+
+    refreshChartsIfVisible();
+    showManageMeasurementTypesModal();
+}
+
+async function showAddSensorModal() {
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
-    document.getElementById("removeSensorModal").style.display = "block";
-    
+    document.getElementById("addSensorModal").style.display = "block";
+    await loadDevicesForSelect("newSensorDevice");
+    await loadMeasurementTypesForSelect("newSensorMeasurementType");
+}
+
+async function createSensor() {
     const token = getToken() || localStorage.getItem("token");
-    const select = document.getElementById("sensorToRemove");
-    select.innerHTML = "<option value=''>Loading...</option>";
-    
+    const deviceId = document.getElementById("newSensorDevice").value;
+    const measurementTypeId = document.getElementById("newSensorMeasurementType").value;
+    const name = document.getElementById("newSensorName").value.trim();
+    const location = document.getElementById("newSensorLocation").value;
+
+    if (!deviceId || !measurementTypeId || !name) {
+        alert("Please select a device, measurement type, and name");
+        return;
+    }
+
+    const res = await fetch("/sensors", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+            device_id: parseInt(deviceId),
+            measurement_type_id: parseInt(measurementTypeId),
+            name,
+            location
+        })
+    });
+
+    if (!res.ok) {
+        const err = await res.json();
+        alert("Error: " + (err.detail || "Failed to create sensor"));
+        return;
+    }
+
+    alert("Sensor created!");
+    refreshChartsIfVisible();
+    showManageSensorsModal();
+}
+
+async function editSensor(sensorId) {
+    const token = getToken() || localStorage.getItem("token");
     const res = await fetch("/sensors", {
         headers: { "Authorization": "Bearer " + token }
     });
     const sensors = await res.json();
-    
-    select.innerHTML = "";
-    sensors.forEach(sensor => {
-        const option = document.createElement("option");
-        option.value = sensor.id;
-        option.textContent = sensor.name;
-        select.appendChild(option);
-    });
-}
+    const sensor = sensors.find(s => s.id === sensorId);
+    if (!sensor) return;
 
-async function deleteSensor() {
-    const token = getToken() || localStorage.getItem("token");
-    const sensorId = document.getElementById("sensorToRemove").value;
-    
-    if (!sensorId) {
-        alert("Please select a sensor");
+    const deviceId = prompt("Device ID:", sensor.device_id);
+    if (deviceId === null) return;
+    const measurementTypeId = prompt("Measurement type ID:", sensor.measurement_type_id);
+    if (measurementTypeId === null) return;
+    const name = prompt("Sensor name:", sensor.name || "");
+    if (name === null) return;
+    const location = prompt("Location:", sensor.location || "");
+    if (location === null) return;
+
+    const parsedDeviceId = parseInt(deviceId);
+    const parsedMeasurementTypeId = parseInt(measurementTypeId);
+    if (Number.isNaN(parsedDeviceId) || Number.isNaN(parsedMeasurementTypeId) || !name.trim()) {
+        alert("Please enter a valid device ID, measurement type ID, and sensor name");
         return;
     }
-    
+
+    const updateRes = await fetch(`/sensors/${sensorId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+            device_id: parsedDeviceId,
+            measurement_type_id: parsedMeasurementTypeId,
+            name,
+            location: location || null
+        })
+    });
+
+    if (!updateRes.ok) {
+        const err = await updateRes.json();
+        alert("Error: " + (err.detail || "Failed to update sensor"));
+        return;
+    }
+
+    refreshChartsIfVisible();
+    showManageSensorsModal();
+}
+
+async function deleteSensor(sensorId) {
+    const token = getToken() || localStorage.getItem("token");
+
+    if (!confirm("Are you sure you want to delete this sensor?")) {
+        return;
+    }
+
     const res = await fetch(`/sensors/${sensorId}`, {
         method: "DELETE",
         headers: { "Authorization": "Bearer " + token }
@@ -493,45 +850,16 @@ async function deleteSensor() {
     
     if (res.ok) {
         alert("Sensor deleted!");
-        closeModals();
-        location.reload();
+        refreshChartsIfVisible();
+        showManageSensorsModal();
     } else {
         const err = await res.json();
         alert("Error: " + (err.detail || "Failed to delete sensor"));
     }
 }
 
-async function showRemoveDeviceModal() {
-    closeModals();
-    document.getElementById("modalOverlay").style.display = "flex";
-    document.getElementById("removeDeviceModal").style.display = "block";
-    
+async function deleteDevice(deviceId) {
     const token = getToken() || localStorage.getItem("token");
-    const select = document.getElementById("deviceToRemove");
-    select.innerHTML = "<option value=''>Loading...</option>";
-    
-    const res = await fetch("/devices", {
-        headers: { "Authorization": "Bearer " + token }
-    });
-    const devices = await res.json();
-    
-    select.innerHTML = "";
-    devices.forEach(device => {
-        const option = document.createElement("option");
-        option.value = device.id;
-        option.textContent = `${device.name} (${device.location || 'no location'})`;
-        select.appendChild(option);
-    });
-}
-
-async function deleteDevice() {
-    const token = getToken() || localStorage.getItem("token");
-    const deviceId = document.getElementById("deviceToRemove").value;
-    
-    if (!deviceId) {
-        alert("Please select a device");
-        return;
-    }
     
     if (!confirm("Are you sure? This will delete all sensors for this device!")) {
         return;
@@ -544,8 +872,8 @@ async function deleteDevice() {
     
     if (res.ok) {
         alert("Device deleted!");
-        closeModals();
-        location.reload();
+        refreshChartsIfVisible();
+        showManageDevicesModal();
     } else {
         const err = await res.json();
         alert("Error: " + (err.detail || "Failed to delete device"));
@@ -590,7 +918,7 @@ async function createUser() {
 
     if (res.ok) {
         alert("User created!");
-        closeModals();
+        showManageUsersModal();
         return;
     }
 
@@ -598,16 +926,16 @@ async function createUser() {
     alert("Error: " + (err.detail || "Failed to create user"));
 }
 
-async function showRemoveUserModal() {
+async function showManageUsersModal() {
     if (!isAdmin) return;
 
     closeModals();
     document.getElementById("modalOverlay").style.display = "flex";
-    document.getElementById("removeUserModal").style.display = "block";
+    document.getElementById("manageUsersModal").style.display = "block";
 
     const token = getToken() || localStorage.getItem("token");
-    const select = document.getElementById("userToRemove");
-    select.innerHTML = "<option value=''>Loading...</option>";
+    const container = document.getElementById("usersList");
+    container.innerHTML = "Loading...";
 
     const meRes = await fetch("/me", {
         headers: { "Authorization": "Bearer " + token }
@@ -619,28 +947,125 @@ async function showRemoveUserModal() {
     });
 
     if (!res.ok) {
-        select.innerHTML = "<option value=''>Unable to load users</option>";
+        container.innerHTML = "<p>Unable to load users.</p>";
         return;
     }
 
     const users = await res.json();
-    select.innerHTML = '<option value="">Select User</option>';
-    users
-        .filter(user => !currentUser || user.id !== currentUser.id)
-        .forEach(user => {
-            const option = document.createElement("option");
-            option.value = user.id;
-            option.textContent = `${user.email} (${user.roles.join(", ") || "no role"})`;
-            select.appendChild(option);
-        });
+    if (users.length === 0) {
+        container.innerHTML = "<p>No users found.</p>";
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="manage-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${users.map(user => {
+                    const isCurrentUser = currentUser && user.id === currentUser.id;
+                    return `
+                        <tr>
+                            <td>${escapeHtml(user.email)}</td>
+                            <td>${escapeHtml([user.first_name, user.last_name].filter(Boolean).join(" ") || "-")}</td>
+                            <td>${escapeHtml(user.roles.join(", ") || "no role")}</td>
+                            <td>${user.is_active ? "Active" : "Inactive"}</td>
+                            <td class="row-actions">
+                                <button type="button" onclick="editUser(${user.id})">Edit</button>
+                                <button type="button" class="danger-small" onclick="deleteUser(${user.id})" ${isCurrentUser ? "disabled" : ""}>Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("")}
+            </tbody>
+        </table>
+    `;
 }
 
-async function deleteUser() {
+async function editUser(userId) {
     const token = getToken() || localStorage.getItem("token");
-    const userId = document.getElementById("userToRemove").value;
+    const res = await fetch("/users", {
+        headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (!res.ok) {
+        alert("Could not load users");
+        return;
+    }
+
+    const users = await res.json();
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+
+    const email = prompt("Email:", user.email || "");
+    if (email === null) return;
+    if (!email.trim()) {
+        alert("Email cannot be empty");
+        return;
+    }
+
+    const firstName = prompt("First name:", user.first_name || "");
+    if (firstName === null) return;
+    const lastName = prompt("Last name:", user.last_name || "");
+    if (lastName === null) return;
+    const role = prompt("Role (user/admin):", user.roles[0] || "user");
+    if (role === null) return;
+    const isActiveInput = prompt("Active? (yes/no):", user.is_active ? "yes" : "no");
+    if (isActiveInput === null) return;
+    const password = prompt("New password (leave blank to keep current):", "");
+    if (password === null) return;
+
+    const normalizedRole = role.trim().toLowerCase();
+    const normalizedActive = isActiveInput.trim().toLowerCase();
+    if (!["user", "admin"].includes(normalizedRole)) {
+        alert("Role must be user or admin");
+        return;
+    }
+    if (!["yes", "no"].includes(normalizedActive)) {
+        alert("Active must be yes or no");
+        return;
+    }
+
+    const payload = {
+        email: email.trim(),
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+        role: normalizedRole,
+        is_active: normalizedActive === "yes"
+    };
+    if (password) {
+        payload.password = password;
+    }
+
+    const updateRes = await fetch(`/users/${userId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!updateRes.ok) {
+        const err = await updateRes.json();
+        alert("Error: " + (err.detail || "Failed to update user"));
+        return;
+    }
+
+    showManageUsersModal();
+}
+
+async function deleteUser(userId) {
+    const token = getToken() || localStorage.getItem("token");
 
     if (!userId) {
-        alert("Please select a user");
         return;
     }
 
@@ -655,7 +1080,7 @@ async function deleteUser() {
 
     if (res.ok) {
         alert("User deleted!");
-        closeModals();
+        showManageUsersModal();
         return;
     }
 

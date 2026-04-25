@@ -24,9 +24,14 @@ from app.schemas import (
     DeviceResponse,
     SensorResponse,
     MeasurementStatsResponse,
+    MeasurementTypeCreate,
+    MeasurementTypeUpdate,
     DeviceCreate,
+    DeviceUpdate,
     SensorCreate,
+    SensorUpdate,
     UserCreate,
+    UserUpdate,
     LoginRequest,
     TokenResponse
 )
@@ -97,6 +102,20 @@ def serialize_user(user: User):
     }
 
 
+def get_or_create_allowed_role(role_name: str, db: Session):
+    normalized_role = role_name.strip().lower() if role_name else "user"
+    if normalized_role not in {"user", "admin"}:
+        raise HTTPException(status_code=400, detail="Role must be user or admin")
+
+    role = db.query(Role).filter(Role.name == normalized_role).first()
+    if not role:
+        role = Role(name=normalized_role)
+        db.add(role)
+        db.flush()
+
+    return role
+
+
 @app.get("/users", response_model=list[UserResponse])
 def get_users(
     user: User = Depends(get_current_user),
@@ -122,15 +141,7 @@ def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="User with this email already exists")
 
-    role_name = payload.role.strip().lower() if payload.role else "user"
-    if role_name not in {"user", "admin"}:
-        raise HTTPException(status_code=400, detail="Role must be user or admin")
-
-    role = db.query(Role).filter(Role.name == role_name).first()
-    if not role:
-        role = Role(name=role_name)
-        db.add(role)
-        db.flush()
+    role = get_or_create_allowed_role(payload.role, db)
 
     new_user = User(
         email=payload.email,
@@ -147,6 +158,48 @@ def create_user(
     db.refresh(new_user)
 
     return serialize_user(new_user)
+
+
+@app.put("/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can edit users")
+
+    user_to_update = db.query(User).filter(User.id == user_id).first()
+    if not user_to_update:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "email" in update_data and update_data["email"] != user_to_update.email:
+        existing = db.query(User).filter(User.email == update_data["email"]).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="User with this email already exists")
+        user_to_update.email = update_data["email"]
+
+    if "first_name" in update_data:
+        user_to_update.first_name = update_data["first_name"]
+    if "last_name" in update_data:
+        user_to_update.last_name = update_data["last_name"]
+    if "is_active" in update_data:
+        user_to_update.is_active = update_data["is_active"]
+    if update_data.get("password"):
+        user_to_update.password_hash = hash_password(update_data["password"])
+
+    if "role" in update_data:
+        role = get_or_create_allowed_role(update_data["role"], db)
+        db.query(UserRole).filter(UserRole.user_id == user_id).delete()
+        db.add(UserRole(user_id=user_id, role_id=role.id))
+
+    db.commit()
+    db.refresh(user_to_update)
+
+    return serialize_user(user_to_update)
 
 
 @app.delete("/users/{user_id}")
@@ -285,29 +338,79 @@ def get_sensor(sensor_id: int, user: User = Depends(get_current_user), db: Sessi
 @app.get("/measurement-types", response_model=list[dict])
 def get_measurement_types(db: Session = Depends(get_db)):
     """Get all measurement types."""
-    types = db.query(MeasurementType).all()
+    types = db.query(MeasurementType).order_by(MeasurementType.name).all()
     return [{"id": t.id, "name": t.name, "unit": t.unit} for t in types]
 
 
 @app.post("/measurement-types")
 def create_measurement_type(
-    name: str,
-    unit: str,
+    payload: MeasurementTypeCreate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Only admins can create measurement types")
     
-    existing = db.query(MeasurementType).filter(MeasurementType.name == name).first()
+    existing = db.query(MeasurementType).filter(MeasurementType.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Measurement type already exists")
     
-    mt = MeasurementType(name=name, unit=unit)
+    mt = MeasurementType(name=payload.name, unit=payload.unit)
     db.add(mt)
     db.commit()
     db.refresh(mt)
     return {"id": mt.id, "name": mt.name, "unit": mt.unit, "message": "Measurement type created"}
+
+
+@app.put("/measurement-types/{type_id}")
+def update_measurement_type(
+    type_id: int,
+    payload: MeasurementTypeUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can edit measurement types")
+
+    mt = db.query(MeasurementType).filter(MeasurementType.id == type_id).first()
+    if not mt:
+        raise HTTPException(status_code=404, detail="Measurement type not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data and update_data["name"] != mt.name:
+        existing = db.query(MeasurementType).filter(MeasurementType.name == update_data["name"]).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Measurement type already exists")
+        mt.name = update_data["name"]
+
+    if "unit" in update_data:
+        mt.unit = update_data["unit"]
+
+    db.commit()
+    db.refresh(mt)
+    return {"id": mt.id, "name": mt.name, "unit": mt.unit}
+
+
+@app.delete("/measurement-types/{type_id}")
+def delete_measurement_type(
+    type_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Only admins can delete measurement types")
+
+    mt = db.query(MeasurementType).filter(MeasurementType.id == type_id).first()
+    if not mt:
+        raise HTTPException(status_code=404, detail="Measurement type not found")
+
+    sensor_count = db.query(Sensor).filter(Sensor.measurement_type_id == type_id).count()
+    if sensor_count:
+        raise HTTPException(status_code=400, detail="Cannot delete a measurement type used by sensors")
+
+    db.delete(mt)
+    db.commit()
+    return {"message": "Measurement type deleted"}
 
 
 @app.post("/devices")
@@ -361,6 +464,29 @@ def delete_device(
     return {"message": "Device deleted"}
 
 
+@app.put("/devices/{device_id}", response_model=DeviceResponse)
+def update_device(
+    device_id: int,
+    payload: DeviceUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if not is_admin(user) and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this device")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(device, field, value)
+
+    db.commit()
+    db.refresh(device)
+    return device
+
+
 @app.post("/sensors")
 def create_sensor(
     sensor: SensorCreate,
@@ -412,6 +538,45 @@ def delete_sensor(
     db.delete(sensor)
     db.commit()
     return {"message": "Sensor deleted"}
+
+
+@app.put("/sensors/{sensor_id}", response_model=SensorResponse)
+def update_sensor(
+    sensor_id: int,
+    payload: SensorUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+
+    current_device = db.query(Device).filter(Device.id == sensor.device_id).first()
+    if not current_device:
+        raise HTTPException(status_code=404, detail="Sensor device not found")
+
+    if not is_admin(user) and current_device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this sensor")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "device_id" in update_data:
+        new_device = db.query(Device).filter(Device.id == update_data["device_id"]).first()
+        if not new_device:
+            raise HTTPException(status_code=404, detail="Device not found")
+        if not is_admin(user) and new_device.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Not authorized to move sensor to this device")
+
+    if "measurement_type_id" in update_data:
+        mt = db.query(MeasurementType).filter(MeasurementType.id == update_data["measurement_type_id"]).first()
+        if not mt:
+            raise HTTPException(status_code=404, detail="Measurement type not found")
+
+    for field, value in update_data.items():
+        setattr(sensor, field, value)
+
+    db.commit()
+    db.refresh(sensor)
+    return sensor
 
 
 @app.get("/measurement-types/{type_id}")
