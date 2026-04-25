@@ -3,26 +3,44 @@ import random
 import datetime
 import requests
 
-API_URL = "http://localhost:8000/measurements"
+API_URL = "http://0.0.0.0:8000/ingest/ecowitt"
 
-SENSOR_ID = 1
+PASSKEY = "MY-TEST-PASS-KEY"
 
+def f_to_str(f):
+    return f"{f:.2f}"
 
-def generate_temperature():
-    return round(random.uniform(20, 27), 2)
+def generate_temperature_f():
+    return random.uniform(65, 80)
+
+def format_ecowitt_ts():
+    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 while True:
+    temp_f = generate_temperature_f()
+
     payload = {
-        "sensor_id": SENSOR_ID,
-        "ts": datetime.datetime.now(datetime.UTC).isoformat(),
-        "value": generate_temperature(),
+        "PASSKEY": PASSKEY,
+        "stationtype": "SIMULATOR_V1",
+        "runtime": str(random.randint(1000, 999999)),
+        "heap": "24716",
+        "dateutc": format_ecowitt_ts(),
+
+        "tempinf": f_to_str(temp_f),
+        "humidityin": str(random.randint(30, 60)),
+
+        "baromrelin": f_to_str(random.uniform(27.5, 28.5)),
+
+        "batt1": "0",
+        "freq": "868M",
+        "model": "SIMULATOR",
+        "interval": "300"
     }
 
     try:
-        response = requests.post(API_URL, json=payload)
-        print(f"Sent: {payload} | Status: {response.status_code}")
+        response = requests.post(API_URL, data=payload)
     except Exception as e:
         print(f"Error: {e}")
 
-    time.sleep(5)
+    time.sleep(300)
