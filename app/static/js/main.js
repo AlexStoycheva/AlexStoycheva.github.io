@@ -203,7 +203,7 @@ async function expandChart(sensorId) {
     overlay.style.display = "flex";
     modal.style.display = "block";
     
-    const labels = data.map(x => x.ts);
+    const labels = data.map(x => formatTime(x.ts));
     const values = data.map(x => x.value);
     
     const ctx = document.getElementById("expandChart").getContext('2d');
