@@ -981,7 +981,7 @@ async def ingest_ecowitt(request: Request, db: Session = Depends(get_db)):
     device = db.query(Device).filter(Device.passkey == passkey).first()
 
     if not device:
-        print(f"Unknown device: {device}")
+        print(f"Unknown device.")
         return {"status": "error", "detail": "Unknown device"}
 
     device_id = device.id

@@ -301,6 +301,7 @@ async function expandChart(sensorId) {
     
     const labels = data.map(x => formatTime(x.ts));
     const values = data.map(x => x.value);
+    const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};;
     
     const ctx = document.getElementById("expandChart").getContext('2d');
     new Chart(ctx, {
@@ -310,8 +311,8 @@ async function expandChart(sensorId) {
             datasets: [{
                 label: sensor.name,
                 data: values,
-                borderColor: '#4CAF50',
-                backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                borderColor: colors.border,
+                backgroundColor: colors.bg,
                 fill: true,
                 tension: 0.3
             }]
