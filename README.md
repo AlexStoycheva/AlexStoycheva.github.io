@@ -87,5 +87,5 @@ Cloud deployment (AWS / GCP)
 
 # Author
 
-Aleksandra Stoicheva
+Aleksandra Stoycheva
 Technical University of Gabrovo
