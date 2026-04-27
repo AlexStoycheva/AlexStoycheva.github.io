@@ -41,17 +41,17 @@ Main components:
 
 ---
 
-# Installation & Setup
+## Installation & Setup
 
-### 1. Clone the repository
+1. Clone the repository
 
 ```bash
 git clone git@github.com:AlexStoycheva/DiplomaWork.git
-
-```bash
 docker-compose up --build
 
-# API Overview
+---
+
+## API Overview
 
 The backend exposes REST endpoints for:
 
@@ -63,7 +63,9 @@ The backend exposes REST endpoints for:
 
 Interactive API documentation is available via Swagger UI.
 
-# Data Simulation
+---
+
+## Data Simulation
 
 The system includes a simulator that generates realistic sensor data for testing purposes.
 This allows development without requiring physical IoT hardware.
@@ -79,7 +81,9 @@ Automatic alert triggering
 Active alerts + history tracking
 Optional email notifications
 
-# Technologies Used
+---
+
+## Technologies Used
 - Python
 - FastAPI
 - PostgreSQL
@@ -88,12 +92,16 @@ Optional email notifications
 - HTML/CSS
 - Docker
 
-# Future Improvements
+---
+
+## Future Improvements
 - Mobile application
 - Advanced analytics (anomaly detection)
 - Push notifications
 - Integration with real IoT hardware
 - Cloud deployment (AWS / GCP)
+
+---
 
 # Author
 
