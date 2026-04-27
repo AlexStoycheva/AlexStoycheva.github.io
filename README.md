@@ -47,7 +47,8 @@ Main components:
 
 ```bash
 git clone git@github.com:AlexStoycheva/DiplomaWork.git
-docker-compose up --build ```
+docker-compose up --build
+```
 
 ---
 
