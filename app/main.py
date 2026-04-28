@@ -835,10 +835,10 @@ def delete_alert_rule(
     if not is_admin(user) and device.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this alert rule")
     
-    db.delete(rule)
+    rule.is_active = False
     db.commit()
-    
-    return {"message": "Alert rule deleted successfully"}
+
+    return {"message": "Alert rule deactivated successfully"}
 
 
 @app.get("/alert-rules")
@@ -847,7 +847,7 @@ def get_alert_rules(
     db: Session = Depends(get_db)
 ):
 
-    rules = db.query(AlertRule).all()
+    rules = db.query(AlertRule).filter(AlertRule.is_active == True).all()
     
     if not is_admin(user):
         user_devices = db.query(Device).filter(Device.user_id == user.id).all()

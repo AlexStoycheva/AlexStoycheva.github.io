@@ -1286,7 +1286,7 @@ async function showAlertsModal() {
             </div>
             <div class="alert-item-actions">
                 <button class="edit-btn" onclick="editAlert(${rule.id}, ${rule.sensor_id}, ${rule.min_value || 'null'}, ${rule.max_value || 'null'}, ${rule.is_active})">Edit</button>
-                <button class="delete-btn" onclick="deleteAlert(${rule.id})">Delete</button>
+                <button class="delete-btn" onclick="deleteAlert(${rule.id})">Deactivate</button>
             </div>
         </div>
     `).join("");
