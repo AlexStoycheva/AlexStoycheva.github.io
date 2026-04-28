@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 import smtplib
 
-from app.db import engine
+from app.db import Base, engine
 from app.config import SMTP_FROM, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_USERNAME, SMTP_USE_TLS
 from app.dependencies import get_db
 from app.models import (
@@ -61,6 +61,10 @@ templates = Jinja2Templates(directory="app/templates")
 
 app = FastAPI(title="Meteo Monitoring API", version="1.0.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
