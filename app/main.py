@@ -330,6 +330,24 @@ def evaluate_alert_rules_for_measurement(
                 active_alert.resolved_at = datetime.utcnow()
 
 
+def resolve_active_alerts_for_rule(db: Session, rule_id: int) -> int:
+    resolved_at = datetime.utcnow()
+    active_alerts = (
+        db.query(Alert)
+        .filter(
+            Alert.alert_rule_id == rule_id,
+            Alert.status == "active"
+        )
+        .all()
+    )
+
+    for alert in active_alerts:
+        alert.status = "resolved"
+        alert.resolved_at = resolved_at
+
+    return len(active_alerts)
+
+
 @app.post("/measurements", response_model=MeasurementResponse)
 def create_measurement(payload: MeasurementCreate, db: Session = Depends(get_db)):
     sensor = db.query(Sensor).filter(Sensor.id == payload.sensor_id).first()
@@ -812,6 +830,8 @@ def update_alert_rule(
         rule.max_value = max_value
     if is_active is not None:
         rule.is_active = is_active
+        if not is_active:
+            resolve_active_alerts_for_rule(db, rule.id)
     
     db.commit()
     db.refresh(rule)
@@ -836,9 +856,13 @@ def delete_alert_rule(
         raise HTTPException(status_code=403, detail="Not authorized to delete this alert rule")
     
     rule.is_active = False
+    resolved_alerts_count = resolve_active_alerts_for_rule(db, rule.id)
     db.commit()
 
-    return {"message": "Alert rule deactivated successfully"}
+    return {
+        "message": "Alert rule deactivated successfully",
+        "resolved_alerts": resolved_alerts_count
+    }
 
 
 @app.get("/alert-rules")
