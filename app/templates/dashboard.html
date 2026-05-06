@@ -33,12 +33,32 @@
     <div class="chart-controls">
         <div class="form-group">
             <label>Time Range (applies to all)</label>
-            <select id="timeRange" onchange="loadAllCharts()">
+            <select id="timeRange" onchange="handleTimeRangeChange()">
                 <option value="1">Last Hour</option>
                 <option value="24" selected>Last 24 Hours</option>
                 <option value="168">Last 7 Days</option>
                 <option value="720">Last 30 Days</option>
+                <option value="custom">Custom Range</option>
             </select>
+        </div>
+        <div id="customRangeControls" class="custom-range-controls" style="display:none;">
+            <div class="form-group">
+                <label>From Date</label>
+                <input type="date" id="customFromDate">
+            </div>
+            <div class="form-group">
+                <label>From Time</label>
+                <input type="time" id="customFromTime" step="60">
+            </div>
+            <div class="form-group">
+                <label>To Date</label>
+                <input type="date" id="customToDate">
+            </div>
+            <div class="form-group">
+                <label>To Time</label>
+                <input type="time" id="customToTime" step="60">
+            </div>
+            <button type="button" class="apply-range-btn" onclick="loadAllCharts()">Apply</button>
         </div>
     </div>
     <div id="chartsContainer" class="charts-grid"></div>

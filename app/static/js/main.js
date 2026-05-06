@@ -56,190 +56,305 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
 
 
 let chartInstances = {};
+let chartLoadSequence = 0;
+let chartLoadController = null;
+let expandedChartInstance = null;
+let expandLoadSequence = 0;
+let expandLoadController = null;
 
 function capitalizeFirstLetter(val) {
     return String(val).charAt(0).toUpperCase() + String(val).slice(1);
 }
 
+function formatDateInputValue(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function formatTimeInputValue(date) {
+    return date.toTimeString().slice(0, 5);
+}
+
+function setDefaultCustomRange() {
+    const fromDateEl = document.getElementById("customFromDate");
+    const fromTimeEl = document.getElementById("customFromTime");
+    const toDateEl = document.getElementById("customToDate");
+    const toTimeEl = document.getElementById("customToTime");
+
+    if (!fromDateEl || !fromTimeEl || !toDateEl || !toTimeEl) return;
+    if (fromDateEl.value || fromTimeEl.value || toDateEl.value || toTimeEl.value) return;
+
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+
+    fromDateEl.value = formatDateInputValue(from);
+    fromTimeEl.value = formatTimeInputValue(from);
+    toDateEl.value = formatDateInputValue(to);
+    toTimeEl.value = formatTimeInputValue(to);
+}
+
+function handleTimeRangeChange() {
+    const controls = document.getElementById("customRangeControls");
+    const timeRange = document.getElementById("timeRange").value;
+
+    if (timeRange === "custom") {
+        if (controls) controls.style.display = "flex";
+        setDefaultCustomRange();
+        return;
+    }
+
+    if (controls) controls.style.display = "none";
+    loadAllCharts();
+}
+
+function getMeasurementQueryString() {
+    const timeRange = document.getElementById("timeRange").value;
+
+    if (timeRange !== "custom") {
+        return new URLSearchParams({ hours: timeRange }).toString();
+    }
+
+    const fromDate = document.getElementById("customFromDate").value;
+    const fromTime = document.getElementById("customFromTime").value;
+    const toDate = document.getElementById("customToDate").value;
+    const toTime = document.getElementById("customToTime").value;
+
+    if (!fromDate || !fromTime || !toDate || !toTime) {
+        alert("Please fill in From and To date/time.");
+        return null;
+    }
+
+    const from = new Date(`${fromDate}T${fromTime}`);
+    const to = new Date(`${toDate}T${toTime}`);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        alert("Please enter a valid custom date/time range.");
+        return null;
+    }
+
+    if (from > to) {
+        alert("From must be before To.");
+        return null;
+    }
+
+    return new URLSearchParams({
+        from_ts: from.toISOString(),
+        to_ts: to.toISOString()
+    }).toString();
+}
+
 async function loadAllCharts() {
     const token = getToken() || localStorage.getItem("token");
-    const hours = document.getElementById("timeRange").value;
+    const measurementQuery = getMeasurementQueryString();
+    if (!measurementQuery) return;
+
+    const loadId = ++chartLoadSequence;
+    if (chartLoadController) {
+        chartLoadController.abort();
+    }
+    chartLoadController = new AbortController();
+    const { signal } = chartLoadController;
+
     const container = document.getElementById("chartsContainer");
     
     Object.values(chartInstances).forEach(chart => chart.destroy());
     chartInstances = {};
-    
-    const [sensorsRes, devicesRes, mtRes] = await Promise.all([
-        fetch("/sensors", { headers: { "Authorization": "Bearer " + token } }),
-        fetch("/devices", { headers: { "Authorization": "Bearer " + token } }),
-        fetch("/measurement-types")
-    ]);
 
-    if (!sensorsRes.ok || !devicesRes.ok || !mtRes.ok) {
-        container.innerHTML = "<p>Unable to load charts.</p>";
-        return;
-    }
+    try {
+        const [sensorsRes, devicesRes, mtRes] = await Promise.all([
+            fetch("/sensors", { headers: { "Authorization": "Bearer " + token }, signal }),
+            fetch("/devices", { headers: { "Authorization": "Bearer " + token }, signal }),
+            fetch("/measurement-types", { signal })
+        ]);
 
-    const sensors = await sensorsRes.json();
-    const devices = await devicesRes.json();
-    const measurementTypes = await mtRes.json();
-    
-    if (devices.length === 0) {
-        container.innerHTML = "<p>No devices available.</p>";
-        return;
-    }
-    
-    container.innerHTML = "";
-    
-    const mtMap = {};
-    measurementTypes.forEach(mt => mtMap[mt.id] = mt);
+        if (loadId !== chartLoadSequence) return;
 
-    const usersById = {};
-    if (typeof isAdmin !== "undefined" && isAdmin) {
-        const usersRes = await fetch("/users", {
-            headers: { "Authorization": "Bearer " + token }
-        });
-        if (usersRes.ok) {
-            const users = await usersRes.json();
-            users.forEach(user => {
-                usersById[user.id] = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
+        if (!sensorsRes.ok || !devicesRes.ok || !mtRes.ok) {
+            container.innerHTML = "<p>Unable to load charts.</p>";
+            return;
+        }
+
+        const sensors = await sensorsRes.json();
+        const devices = await devicesRes.json();
+        const measurementTypes = await mtRes.json();
+
+        if (loadId !== chartLoadSequence) return;
+        
+        if (devices.length === 0) {
+            container.innerHTML = "<p>No devices available.</p>";
+            return;
+        }
+        
+        container.innerHTML = "";
+        
+        const mtMap = {};
+        measurementTypes.forEach(mt => mtMap[mt.id] = mt);
+
+        const usersById = {};
+        if (typeof isAdmin !== "undefined" && isAdmin) {
+            const usersRes = await fetch("/users", {
+                headers: { "Authorization": "Bearer " + token },
+                signal
             });
-        }
-    }
-
-    const sensorsByDevice = {};
-    sensors.forEach(sensor => {
-        if (!sensorsByDevice[sensor.device_id]) {
-            sensorsByDevice[sensor.device_id] = [];
-        }
-        sensorsByDevice[sensor.device_id].push(sensor);
-    });
-
-    const deviceMap = {};
-    devices.forEach(device => {
-        deviceMap[device.id] = device;
-    });
-
-    const orderedDevices = devices
-        .sort((a, b) => {
-            const ownerA = usersById[a.user_id] || "";
-            const ownerB = usersById[b.user_id] || "";
-            return ownerA.localeCompare(ownerB) || a.name.localeCompare(b.name);
-        });
-
-    const unknownDeviceIds = new Set();
-    for (const sensor of sensors.filter(sensor => !deviceMap[sensor.device_id])) {
-        if (unknownDeviceIds.has(sensor.device_id)) continue;
-        unknownDeviceIds.add(sensor.device_id);
-
-        if (!sensorsByDevice[sensor.device_id]) {
-            sensorsByDevice[sensor.device_id] = [];
-        }
-        orderedDevices.push({
-            id: sensor.device_id,
-            name: "Unknown Device",
-            user_id: null,
-            location_name: ""
-        });
-    }
-
-    let lastOwnerLabel = null;
-    let currentOwnerPanel = null;
-
-    for (const device of orderedDevices) {
-        const deviceSensors = (sensorsByDevice[device.id] || [])
-            .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-        const ownerLabel = usersById[device.user_id] || (device.user_id ? `User #${device.user_id}` : "Unassigned");
-        if (typeof isAdmin !== "undefined" && isAdmin && ownerLabel !== lastOwnerLabel) {
-            currentOwnerPanel = document.createElement("section");
-            currentOwnerPanel.className = "chart-user-panel";
-
-            const ownerHeading = document.createElement("h2");
-            ownerHeading.className = "chart-owner-heading";
-            ownerHeading.textContent = ownerLabel;
-            currentOwnerPanel.appendChild(ownerHeading);
-            container.appendChild(currentOwnerPanel);
-            lastOwnerLabel = ownerLabel;
-        }
-
-        const section = document.createElement("section");
-        section.className = "device-chart-section";
-        section.innerHTML = `
-            <div class="device-chart-heading">
-                <h3>${escapeHtml(device.name)}</h3>
-                <span>${escapeHtml(device.location_name || "no location")}</span>
-            </div>
-            <div class="device-chart-grid"></div>
-        `;
-        (currentOwnerPanel || container).appendChild(section);
-
-        const grid = section.querySelector(".device-chart-grid");
-
-        if (deviceSensors.length === 0) {
-            grid.innerHTML = '<p class="empty-device-message">No sensors configured for this device.</p>';
-            continue;
-        }
-
-        for (const sensor of deviceSensors) {
-            const card = document.createElement("div");
-            card.className = "chart-card";
-            card.onclick = () => expandChart(sensor.id);
-            card.innerHTML = `
-                <h4>${escapeHtml(sensor.name)} - ${escapeHtml(capitalizeFirstLetter(sensor.location || "unknown"))}</h4>
-                <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
-                <canvas id="chart-${sensor.id}"></canvas>
-            `;
-            grid.appendChild(card);
-            
-            const res = await fetch(`/measurements/by-sensor/${sensor.id}?hours=${hours}`, {
-                headers: { "Authorization": "Bearer " + token }
-            });
-            const data = res.ok ? await res.json() : [];
-            const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
-            const valueEl = document.getElementById(`value-${sensor.id}`);
-
-            if (data.length > 0) {
-                const latest = data[data.length - 1];
-                const mt = mtMap[sensor.measurement_type_id];
-                const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
-                valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${unit}</span>`;
-                valueEl.style.color = colors.border;
-            } else {
-                valueEl.innerHTML = "No data<span class='unit'></span>";
+            if (loadId !== chartLoadSequence) return;
+            if (usersRes.ok) {
+                const users = await usersRes.json();
+                if (loadId !== chartLoadSequence) return;
+                users.forEach(user => {
+                    usersById[user.id] = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
+                });
             }
-            
-            const labels = data.map(x => formatTime(x.ts));
-            const values = data.map(x => x.value);
-            
-            const ctx = document.getElementById(`chart-${sensor.id}`).getContext('2d');
-            chartInstances[sensor.id] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: sensor.name,
-                        data: values,
-                        borderColor: colors.border,
-                        backgroundColor: colors.bg,
-                        fill: true,
-                        tension: 0.3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
+        }
+
+        const sensorsByDevice = {};
+        sensors.forEach(sensor => {
+            if (!sensorsByDevice[sensor.device_id]) {
+                sensorsByDevice[sensor.device_id] = [];
+            }
+            sensorsByDevice[sensor.device_id].push(sensor);
+        });
+
+        const deviceMap = {};
+        devices.forEach(device => {
+            deviceMap[device.id] = device;
+        });
+
+        const orderedDevices = devices
+            .sort((a, b) => {
+                const ownerA = usersById[a.user_id] || "";
+                const ownerB = usersById[b.user_id] || "";
+                return ownerA.localeCompare(ownerB) || a.name.localeCompare(b.name);
+            });
+
+        const unknownDeviceIds = new Set();
+        for (const sensor of sensors.filter(sensor => !deviceMap[sensor.device_id])) {
+            if (unknownDeviceIds.has(sensor.device_id)) continue;
+            unknownDeviceIds.add(sensor.device_id);
+
+            if (!sensorsByDevice[sensor.device_id]) {
+                sensorsByDevice[sensor.device_id] = [];
+            }
+            orderedDevices.push({
+                id: sensor.device_id,
+                name: "Unknown Device",
+                user_id: null,
+                location_name: ""
+            });
+        }
+
+        let lastOwnerLabel = null;
+        let currentOwnerPanel = null;
+
+        for (const device of orderedDevices) {
+            if (loadId !== chartLoadSequence) return;
+
+            const deviceSensors = (sensorsByDevice[device.id] || [])
+                .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+            const ownerLabel = usersById[device.user_id] || (device.user_id ? `User #${device.user_id}` : "Unassigned");
+            if (typeof isAdmin !== "undefined" && isAdmin && ownerLabel !== lastOwnerLabel) {
+                currentOwnerPanel = document.createElement("section");
+                currentOwnerPanel.className = "chart-user-panel";
+
+                const ownerHeading = document.createElement("h2");
+                ownerHeading.className = "chart-owner-heading";
+                ownerHeading.textContent = ownerLabel;
+                currentOwnerPanel.appendChild(ownerHeading);
+                container.appendChild(currentOwnerPanel);
+                lastOwnerLabel = ownerLabel;
+            }
+
+            const section = document.createElement("section");
+            section.className = "device-chart-section";
+            section.innerHTML = `
+                <div class="device-chart-heading">
+                    <h3>${escapeHtml(device.name)}</h3>
+                    <span>${escapeHtml(device.location_name || "no location")}</span>
+                </div>
+                <div class="device-chart-grid"></div>
+            `;
+            (currentOwnerPanel || container).appendChild(section);
+
+            const grid = section.querySelector(".device-chart-grid");
+
+            if (deviceSensors.length === 0) {
+                grid.innerHTML = '<p class="empty-device-message">No sensors configured for this device.</p>';
+                continue;
+            }
+
+            for (const sensor of deviceSensors) {
+                if (loadId !== chartLoadSequence) return;
+
+                const card = document.createElement("div");
+                card.className = "chart-card";
+                card.onclick = () => expandChart(sensor.id);
+                card.innerHTML = `
+                    <h4>${escapeHtml(sensor.name)} - ${escapeHtml(capitalizeFirstLetter(sensor.location || "unknown"))}</h4>
+                    <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
+                    <canvas id="chart-${sensor.id}"></canvas>
+                `;
+                grid.appendChild(card);
+                
+                const res = await fetch(`/measurements/by-sensor/${sensor.id}?${measurementQuery}`, {
+                    headers: { "Authorization": "Bearer " + token },
+                    cache: "no-store",
+                    signal
+                });
+                const data = res.ok ? await res.json() : [];
+                if (loadId !== chartLoadSequence) return;
+
+                const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
+                const valueEl = document.getElementById(`value-${sensor.id}`);
+
+                if (!valueEl) return;
+
+                if (data.length > 0) {
+                    const latest = data[data.length - 1];
+                    const mt = mtMap[sensor.measurement_type_id];
+                    const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
+                    valueEl.innerHTML = `${parseFloat(latest.value).toFixed(1)}<span class="unit"> ${unit}</span>`;
+                    valueEl.style.color = colors.border;
+                } else {
+                    valueEl.innerHTML = "No data<span class='unit'></span>";
+                }
+                
+                const labels = data.map(x => formatTime(x.ts));
+                const values = data.map(x => x.value);
+                
+                const ctx = document.getElementById(`chart-${sensor.id}`).getContext('2d');
+                chartInstances[sensor.id] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: sensor.name,
+                            data: values,
+                            borderColor: colors.border,
+                            backgroundColor: colors.bg,
+                            fill: true,
+                            tension: 0.3
+                        }]
                     },
-                    scales: {
-                        x: { 
-                            ticks: { maxTicksLimit: 8 }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: { 
+                                ticks: { maxTicksLimit: 8 }
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         }
+    } catch (error) {
+        if (error.name === "AbortError") return;
+        container.innerHTML = "<p>Unable to load charts.</p>";
     }
 }
 
@@ -250,91 +365,128 @@ function formatTime(ts) {
 
 async function expandChart(sensorId) {
     const token = getToken() || localStorage.getItem("token");
-    const hours = document.getElementById("timeRange").value;
-    
-    const sensorRes = await fetch(`/sensors/${sensorId}`, {
-        headers: { "Authorization": "Bearer " + token }
-    });
-    const sensor = await sensorRes.json();
-    
-    const mtRes = await fetch(`/measurement-types/${sensor.measurement_type_id}`, {
-        headers: { "Authorization": "Bearer " + token }
-    });
-    const mt = await mtRes.json();
-    
-    const dataRes = await fetch(`/measurements/by-sensor/${sensorId}?hours=${hours}`, {
-        headers: { "Authorization": "Bearer " + token }
-    });
-    const data = await dataRes.json();
-    
-    const overlay = document.getElementById("modalOverlay");
-    let modal = document.getElementById("expandChartModal");
-    
-    if (!modal) {
-        overlay.innerHTML += `
-            <div id="expandChartModal" class="modal" style="width: 90%; max-width: 1100px; max-height: 80vh;">
-                <div class="modal-header">
-                    <h3 id="expandChartTitle">Chart</h3>
-                    <button type="button" class="close-modal" onclick="closeExpandModal()">×</button>
-                </div>
-                <div class="modal-body" style="max-height: calc(80vh - 60px); overflow-y: auto;">
-                    <div class="current-value" id="expandCurrentValue" style="text-align: center; margin-bottom: 15px;"></div>
-                    <canvas id="expandChart" style="max-height: 50vh;"></canvas>
-                </div>
-            </div>
-        `;
-        modal = document.getElementById("expandChartModal");
+    const measurementQuery = getMeasurementQueryString();
+    if (!measurementQuery) return;
+
+    const loadId = ++expandLoadSequence;
+    if (expandLoadController) {
+        expandLoadController.abort();
     }
+    expandLoadController = new AbortController();
+    const { signal } = expandLoadController;
     
-    document.getElementById("expandChartTitle").textContent = sensor.name;
-    
-    const valueEl = document.getElementById("expandCurrentValue");
-    if (data.length > 0) {
-        const latest = data[data.length - 1];
-        valueEl.innerHTML = `Current: <strong>${parseFloat(latest.value).toFixed(1)} ${mt.unit}</strong>`;
-    } else {
-        valueEl.innerHTML = "No data";
-    }
-    
-    overlay.style.display = "flex";
-    modal.style.display = "block";
-    
-    const labels = data.map(x => formatTime(x.ts));
-    const values = data.map(x => x.value);
-    const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};;
-    
-    const ctx = document.getElementById("expandChart").getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: sensor.name,
-                data: values,
-                borderColor: colors.border,
-                backgroundColor: colors.bg,
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
+    try {
+        const sensorRes = await fetch(`/sensors/${sensorId}`, {
+            headers: { "Authorization": "Bearer " + token },
+            signal
+        });
+        const sensor = await sensorRes.json();
+        if (loadId !== expandLoadSequence) return;
+        
+        const mtRes = await fetch(`/measurement-types/${sensor.measurement_type_id}`, {
+            headers: { "Authorization": "Bearer " + token },
+            signal
+        });
+        const mt = await mtRes.json();
+        if (loadId !== expandLoadSequence) return;
+        
+        const dataRes = await fetch(`/measurements/by-sensor/${sensorId}?${measurementQuery}`, {
+            headers: { "Authorization": "Bearer " + token },
+            cache: "no-store",
+            signal
+        });
+        const data = await dataRes.json();
+        if (loadId !== expandLoadSequence) return;
+        
+        const overlay = document.getElementById("modalOverlay");
+        let modal = document.getElementById("expandChartModal");
+        
+        if (!modal) {
+            overlay.innerHTML += `
+                <div id="expandChartModal" class="modal" style="width: 90%; max-width: 1100px; max-height: 80vh;">
+                    <div class="modal-header">
+                        <h3 id="expandChartTitle">Chart</h3>
+                        <button type="button" class="close-modal" onclick="closeExpandModal()">×</button>
+                    </div>
+                    <div class="modal-body" style="max-height: calc(80vh - 60px); overflow-y: auto;">
+                        <div class="current-value" id="expandCurrentValue" style="text-align: center; margin-bottom: 15px;"></div>
+                        <canvas id="expandChart" style="max-height: 50vh;"></canvas>
+                    </div>
+                </div>
+            `;
+            modal = document.getElementById("expandChartModal");
+        }
+        
+        document.getElementById("expandChartTitle").textContent = sensor.name;
+        
+        const valueEl = document.getElementById("expandCurrentValue");
+        if (data.length > 0) {
+            const latest = data[data.length - 1];
+            valueEl.innerHTML = `Current: <strong>${parseFloat(latest.value).toFixed(1)} ${mt.unit}</strong>`;
+        } else {
+            valueEl.innerHTML = "No data";
+        }
+        
+        overlay.style.display = "flex";
+        modal.style.display = "block";
+        
+        const labels = data.map(x => formatTime(x.ts));
+        const values = data.map(x => x.value);
+        const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
+        
+        if (expandedChartInstance) {
+            expandedChartInstance.destroy();
+        }
+
+        const ctx = document.getElementById("expandChart").getContext('2d');
+        expandedChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: sensor.name,
+                    data: values,
+                    borderColor: colors.border,
+                    backgroundColor: colors.bg,
+                    fill: true,
+                    tension: 0.3
+                }]
             },
-            scales: {
-                x: { 
-                    ticks: { maxTicksLimit: 15 }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { 
+                        ticks: { maxTicksLimit: 15 }
+                    }
                 }
             }
+        });
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            alert("Unable to load expanded chart.");
         }
-    });
+    }
 }
 
 function closeExpandModal() {
-    document.getElementById("modalOverlay").style.display = "none";
-    document.getElementById("expandChartModal").style.display = "none";
+    const overlay = document.getElementById("modalOverlay");
+    const modal = document.getElementById("expandChartModal");
+
+    if (overlay) overlay.style.display = "none";
+    if (modal) modal.style.display = "none";
+
+    if (expandLoadController) {
+        expandLoadController.abort();
+    }
+
+    if (expandedChartInstance) {
+        expandedChartInstance.destroy();
+        expandedChartInstance = null;
+    }
 }
 
 

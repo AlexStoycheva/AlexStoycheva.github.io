@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, Body
+from fastapi import FastAPI, Depends, HTTPException, Body, Query
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 import smtplib
 
@@ -348,6 +348,12 @@ def resolve_active_alerts_for_rule(db: Session, rule_id: int) -> int:
     return len(active_alerts)
 
 
+def normalize_query_datetime(value: datetime | None) -> datetime | None:
+    if value and value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
 @app.post("/measurements", response_model=MeasurementResponse)
 def create_measurement(payload: MeasurementCreate, db: Session = Depends(get_db)):
     sensor = db.query(Sensor).filter(Sensor.id == payload.sensor_id).first()
@@ -676,6 +682,8 @@ def get_measurement_type(type_id: int, user: User = Depends(get_current_user), d
 def get_measurements_by_sensor(
         sensor_id: int, 
         hours: int = 24,
+        from_ts: datetime | None = Query(None),
+        to_ts: datetime | None = Query(None),
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
         ):
@@ -683,12 +691,25 @@ def get_measurements_by_sensor(
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    if (from_ts is None) != (to_ts is None):
+        raise HTTPException(status_code=400, detail="Both from_ts and to_ts are required for a custom range")
+
+    from_ts = normalize_query_datetime(from_ts)
+    to_ts = normalize_query_datetime(to_ts)
+
+    if from_ts and to_ts and from_ts > to_ts:
+        raise HTTPException(status_code=400, detail="from_ts must be before to_ts")
+
+    query = db.query(Measurement).filter(Measurement.sensor_id == sensor_id)
+
+    if from_ts and to_ts:
+        query = query.filter(Measurement.ts >= from_ts, Measurement.ts <= to_ts)
+    else:
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        query = query.filter(Measurement.ts >= cutoff)
 
     measurements = (
-        db.query(Measurement)
-        .filter(Measurement.sensor_id == sensor_id)
-        .filter(Measurement.ts >= cutoff)
+        query
         .order_by(Measurement.ts.asc())
         .limit(500)
         .all()
