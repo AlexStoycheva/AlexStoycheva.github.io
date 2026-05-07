@@ -105,7 +105,6 @@ body {
 .modal {
     background: white;
     border-radius: 12px;
-    width: 400px;
     max-width: 90%;
     max-height: 90vh;
     box-shadow: 0 8px 30px rgba(0,0,0,0.2);
