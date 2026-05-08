@@ -717,20 +717,39 @@ def get_measurements_by_sensor(
     return measurements
 
 @app.get("/measurements/stats/{sensor_id}", response_model=MeasurementStatsResponse)
-def get_measurement_stats(sensor_id: int, db: Session = Depends(get_db)):
+def get_measurement_stats(
+        sensor_id: int,
+        hours: int = 24,
+        from_ts: datetime | None = Query(None),
+        to_ts: datetime | None = Query(None),
+        db: Session = Depends(get_db)
+        ):
     sensor = db.query(Sensor).filter(Sensor.id == sensor_id).first()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
-    result = (
-        db.query(
-            func.min(Measurement.value),
-            func.max(Measurement.value),
-            func.avg(Measurement.value),
-        )
-        .filter(Measurement.sensor_id == sensor_id)
-        .first()
-    )
+    if (from_ts is None) != (to_ts is None):
+        raise HTTPException(status_code=400, detail="Both from_ts and to_ts are required for a custom range")
+
+    from_ts = normalize_query_datetime(from_ts)
+    to_ts = normalize_query_datetime(to_ts)
+
+    if from_ts and to_ts and from_ts > to_ts:
+        raise HTTPException(status_code=400, detail="from_ts must be before to_ts")
+
+    query = db.query(
+        func.min(Measurement.value),
+        func.max(Measurement.value),
+        func.avg(Measurement.value),
+    ).filter(Measurement.sensor_id == sensor_id)
+
+    if from_ts and to_ts:
+        query = query.filter(Measurement.ts >= from_ts, Measurement.ts <= to_ts)
+    else:
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        query = query.filter(Measurement.ts >= cutoff)
+
+    result = query.first()
 
     return MeasurementStatsResponse(
         sensor_id=sensor_id,

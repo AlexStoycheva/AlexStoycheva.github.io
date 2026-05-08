@@ -293,6 +293,7 @@ async function loadAllCharts() {
                 card.innerHTML = `
                     <h4>${escapeHtml(sensor.name)} - ${escapeHtml(capitalizeFirstLetter(sensor.location || "unknown"))}</h4>
                     <div class="current-value" id="value-${sensor.id}">--<span class="unit"></span></div>
+                    <div class="chart-card-stats" id="stats-${sensor.id}"></div>
                     <canvas id="chart-${sensor.id}"></canvas>
                 `;
                 grid.appendChild(card);
@@ -303,6 +304,15 @@ async function loadAllCharts() {
                     signal
                 });
                 const data = res.ok ? await res.json() : [];
+                if (loadId !== chartLoadSequence) return;
+
+                // Fetch stats
+                const statsRes = await fetch(`/measurements/stats/${sensor.id}?${measurementQuery}`, {
+                    headers: { "Authorization": "Bearer " + token },
+                    cache: "no-store",
+                    signal
+                });
+                const stats = statsRes.ok ? await statsRes.json() : null;
                 if (loadId !== chartLoadSequence) return;
 
                 const colors = SENSOR_COLORS[sensor.measurement_type_id] || { border: "#95a5a6", bg: "rgba(149, 165, 166, 0.2)"};
@@ -318,6 +328,29 @@ async function loadAllCharts() {
                     valueEl.style.color = colors.border;
                 } else {
                     valueEl.innerHTML = "No data<span class='unit'></span>";
+                }
+
+                // Display stats
+                if (stats && (stats.min_value !== null || stats.max_value !== null || stats.avg_value !== null)) {
+                    const mt = mtMap[sensor.measurement_type_id];
+                    const unit = mt ? UNIT_MAP[mt.unit] || mt.unit : '';
+                    const statsEl = document.getElementById(`stats-${sensor.id}`);
+                    if (statsEl) {
+                        statsEl.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-item-label">Min</div>
+                                <div class="stat-item-value">${stats.min_value !== null ? parseFloat(stats.min_value).toFixed(1) : '--'}<span class="unit">${unit}</span></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-item-label">Avg</div>
+                                <div class="stat-item-value">${stats.avg_value !== null ? parseFloat(stats.avg_value).toFixed(1) : '--'}<span class="unit">${unit}</span></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-item-label">Max</div>
+                                <div class="stat-item-value">${stats.max_value !== null ? parseFloat(stats.max_value).toFixed(1) : '--'}<span class="unit">${unit}</span></div>
+                            </div>
+                        `;
+                    }
                 }
                 
                 const labels = data.map(x => formatTime(x.ts));

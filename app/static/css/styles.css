@@ -667,3 +667,40 @@ canvas {
     max-height: 700px;
     display: block;
 }
+
+.chart-card-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 10px 0 10px 0;
+    padding: 10px 0;
+    border-top: 1px solid #edf0f2;
+    border-bottom: 1px solid #edf0f2;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 8px 5px;
+}
+
+.stat-item-label {
+    font-size: 12px;
+    color: #999;
+    text-transform: uppercase;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+.stat-item-value {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    margin-top: 4px;
+}
+
+.stat-item-value .unit {
+    font-size: 12px;
+    color: #999;
+    font-weight: normal;
+    margin-left: 2px;
+}
